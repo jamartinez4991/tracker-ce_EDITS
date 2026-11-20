@@ -126,7 +126,11 @@ const uint8_t PATTERN_INDEX_MIN = 1;
 const uint8_t PATTERN_INDEX_MAX = 255;
 
 const uint8_t FX_MAX = 49;
+#if defined(MOD_STEP_JUMP) || defined(MOD_COND_CHANCE)
+const uint8_t FX_COUNT = 47; // +1 visible FX (Track Local Step Jump or Cond. Chance); FX_MAX (49) still exceeds the highest list index
+#else
 const uint8_t FX_COUNT = 46;
+#endif
 const uint8_t FX_COUNT_HIDDEN_FXes = 1; // ile fxów na końcu listy jest ukrytych
 
 const uint8_t FX_VALUE_MAX = 127;
