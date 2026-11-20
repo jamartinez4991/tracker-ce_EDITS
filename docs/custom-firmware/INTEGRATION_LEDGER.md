@@ -160,3 +160,14 @@ Not done for any feature: hardware validation, audio-thread timing measurement, 
 | Slot-trigger Microtiming | Follows the global setting (see limitations) |
 | `features.tsv` is the authoritative registry | A feature PR branch must be registered or validation fails; infrastructure branches use `infra/*` (`tools/cfw/infra-branches.txt`) |
 | A clean Git merge is not proof of correctness | Compare against `custom-firmware` for missing glue |
+
+## Integration step 1 validation (#5 Pitch/LFO, branch `integrate/pitch-lfo-extensions`)
+
+- Content: original #5 commit `17ca6bc` plus a clean merge of `main` (`a18b8ad`); no conflicts, no glue needed.
+  Compared with `custom-firmware`, the only differences in the touched files are #4 (Filter rename) and #6 (Bipolar depth).
+- **C (Plus only, by decision):** stock 394, Pitch/LFO + deps 394, merged 397, merged + Pitch/LFO 397, Pitch range alone 395,
+  Polarity alone 394, Signed depth alone 394 — all 0 errors (rows in `build-results.tsv`).
+- **Original / Mini: not built for this step** (Plus-only validation chosen to save build time). A partial Original run
+  (stock 2726, Pitch/LFO + deps 2726, 0 errors) is also recorded. Mini is untested.
+- **T:** host tests pass (`tests/boundary.cpp`; these do not exercise Pitch/LFO).
+- **H:** no hardware validation.
