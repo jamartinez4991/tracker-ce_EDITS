@@ -184,6 +184,9 @@ class Sequencer
             FX_TYPE_R7,
             FX_TYPE_R8,
             FX_TYPE_R9,
+#ifdef MOD_STEP_JUMP
+            FX_TYPE_STEP_JUMP, // appended after legacy ids; value 1..128 = target step
+#endif
 
         };
 
@@ -375,6 +378,13 @@ class Sequencer
 
         bool breakPattern = 0; // stops pattern after current step
         bool endOfPattern = false;
+#ifdef MOD_MASTER_MULTIPLIER
+        // Master loop timing (ordinary pattern / song playback only). Independent of globalPos and
+        // of every per-track position.
+        uint16_t masterStep = 0;       // global steps completed in the active master cycle
+        uint16_t masterLength = 0;     // latched duration of the active cycle (pattern steps * multiplier)
+        uint8_t masterActiveMult = 1;  // multiplier latched for the active cycle; 1 = stock behaviour
+#endif
 
         uint8_t midiInVoiceMode = midiInVoiceMode_sequencer;
 
@@ -457,6 +467,13 @@ class Sequencer
             bool noteOpen = 0;
             uint8_t recOpen = 0;
             uint8_t recNoteOnStepIdx = 0;
+#ifdef MOD_LIVE_REC_TOGGLES
+            // Captured when this track's live-recording lifecycle starts (see
+            // features/live-recording-toggles). Only meaningful while recOpen != 0; never read
+            // from the global toggles once captured.
+            bool recCapMicrotiming = true;
+            bool recCapNoteOff = true;
+#endif
 
             int16_t noteSource = -1;
 
@@ -474,6 +491,11 @@ class Sequencer
             uint8_t cancelStep = 0;
             uint32_t passCount = 0;
             bool lastCondFired = true;
+#ifdef MOD_STEP_JUMP
+            // Track Local Step Jump: recorded at uStep==1, consumed at the next step boundary
+            bool pendingJumpValid = false;
+            uint8_t pendingJumpTarget = 1; // user-visible step 1..128 as entered; resolved when consumed
+#endif
 
             struct strRollFx
             {
@@ -650,6 +672,17 @@ class Sequencer
     strPattern* getPatternToSaveToFile() { return currentPattern; }
 
     strPattern* getActualPattern() { return currentPattern; }
+#ifdef MOD_MASTER_MULTIPLIER
+    // Master loop multiplier, stored in strPattern::rezerwa1 as 0..7 (x1..x8). Every consumer goes through
+    // these helpers; any other stored value reads as x1.
+    static constexpr uint8_t kMasterMultiplierMax = 8;
+    static uint8_t decodeMasterMultiplier(uint8_t raw) { return raw < kMasterMultiplierMax ? raw + 1 : 1; }
+    static uint8_t getPatternMultiplier(const strPattern* p) { return decodeMasterMultiplier(p->rezerwa1); }
+    static void setPatternMultiplier(strPattern* p, int value)
+    {
+        p->rezerwa1 = (value < 1 ? 1 : (value > kMasterMultiplierMax ? kMasterMultiplierMax : value)) - 1;
+    }
+#endif
     strPattern* getBuffPattern() { return bufferPattern; }
 
     bool isPerformanceTrackChange(uint8_t track)
@@ -768,6 +801,10 @@ class Sequencer
     void recEnable(bool enable);
     void stop(void);
     void stopManualNotes(void);
+#ifdef MOD_LAZY_CHOP
+    // True when `track` holds an open manual (preview) note; reports its source and instrument.
+    bool getManualNoteBinding(uint8_t track, int16_t& source, uint8_t& instrument) const;
+#endif
     void continueSong(uint8_t songPos);
     void loopCurrentPattern(uint8_t songPos);
     int16_t findSlotWithPattern();
@@ -942,6 +979,14 @@ class Sequencer
         player.preRollMetronomeEndCalback = preRollMetronomeEndCalback;
     };
 
+#ifdef MOD_LIVE_REC_TOGGLES
+    // Pattern Editor controls. Changing these never affects a note that is already being recorded.
+    bool getLiveRecNoteOffDetection() const { return liveRecNoteOffDetection; }
+    void setLiveRecNoteOffDetection(bool on) { liveRecNoteOffDetection = on; }
+    bool getLiveRecMicrotiming();
+    void setLiveRecMicrotiming(bool on) { liveRecMicrotimingOverride = on ? 1 : 0; }
+#endif
+
   private:
     static constexpr int kTicksInStep = 576;
     static constexpr size_t kExternalTempoCounterSize = 24 * 2;
@@ -973,7 +1018,17 @@ class Sequencer
     void reset_actual_pos(void);
     void reset_actual_pos(uint8_t row, uint8_t delta = 0);
     void resetChanceState(void);
+#ifdef MOD_MASTER_MULTIPLIER
+    void masterTimingStart(uint8_t startPos);
+    void masterTimingStop(void);
+    void masterRestartTracks(void);
+#endif
     bool evaluateChanceFx(uint8_t row, uint8_t value);
+#ifdef MOD_STEP_JUMP
+    void evaluateStepJumpControl(uint8_t row);
+    void applyPendingStepJump(uint8_t row, uint8_t trackLength);
+    void discardPendingStepJumps(void);
+#endif
 
     void play_microStep(int row);
     void inc_uStep(uint8_t row);
@@ -1020,7 +1075,33 @@ class Sequencer
 
     uint8_t recMicrotiming();
     uint8_t recVelocity();
+#ifdef MOD_LIVE_REC_TOGGLES
+    // Global runtime options for *new* live recordings (RAM only, not saved).
+    // Microtiming follows the config's recOptions until the user overrides it.
+    int8_t liveRecMicrotimingOverride = -1; // -1 = follow recOptions, 0 = OFF, 1 = ON
+    bool liveRecNoteOffDetection = true;
+#endif
     uint8_t getDestRecordingStep(uint8_t track, bool quantize, bool noteOff = false);
+    // Settings an *active* recording on this track must use (captured at its start). Without the
+    // mod these are exactly the stock behaviour.
+    bool recMicroFor(uint8_t track)
+    {
+#ifdef MOD_LIVE_REC_TOGGLES
+        return player.track[track].recCapMicrotiming;
+#else
+        (void)track;
+        return recMicrotiming();
+#endif
+    }
+    bool recNoteOffFor(uint8_t track)
+    {
+#ifdef MOD_LIVE_REC_TOGGLES
+        return player.track[track].recCapNoteOff;
+#else
+        (void)track;
+        return true;
+#endif
+    }
 
     uint8_t getNextArpNote(strPlayer::strPlayerTrack* playerRow);
 

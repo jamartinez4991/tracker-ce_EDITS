@@ -8,6 +8,9 @@
 #include "log.h"
 #include "mtAudioEngine.h"
 #include "mtSequencer.h"
+#ifdef MOD_MIDI_SLOT_TRIGGER
+#include "mtMidiSlotTrigger.h"
+#endif
 #include "mtStructs.h"
 #include "sampleRecorder/sampleRecorder.h"
 
@@ -381,6 +384,11 @@ AUDIO_CORE_RAM void Sequencer::play_microStep(int row)
 
     if (!playerRow.isActive)
         return;
+#ifdef MOD_STEP_JUMP
+    // control-flow pass: must run before the mute return so jumps keep working on muted tracks
+    if (playerRow.uStep == 1)
+        evaluateStepJumpControl(row);
+#endif
     if (isTrackEngineMuted(row))
         return;
 
@@ -442,10 +450,16 @@ AUDIO_CORE_RAM void Sequencer::play_microStep(int row)
                     {
                         chanceEvaluated = true;
                         if (!evaluateChanceFx(row, _fx.value))
+                        {
                             playerRow.cancelStep = 1;
+#ifdef MOD_STEP_JUMP
+                            playerRow.pendingJumpValid = false; // failed Chance suppresses the jump
+#endif
+                        }
                     }
 
                     break;
+
             }
         }
 
@@ -710,6 +724,14 @@ AUDIO_CORE_RAM void Sequencer::play_microStep(int row)
                     player.breakPattern = 1;
                     break;
 
+#ifdef MOD_STEP_JUMP
+                case fx.FX_TYPE_STEP_JUMP:
+                    // sequencer control command, already recorded by evaluateStepJumpControl();
+                    // consumed here so it is never treated as an instrument FX
+                    killFxOnSlot(row, fxIndex);
+                    break;
+#endif
+
                 case fx.FX_TYPE_RANDOM_VOLUME:
                     if (stepToSend.note >= 0)
                     {
@@ -769,6 +791,10 @@ AUDIO_CORE_RAM void Sequencer::play_microStep(int row)
                         break;
 
                     case fx.FX_TYPE_ARP: playerRow.arp.reset(); break;
+
+#ifdef MOD_STEP_JUMP
+                    case fx.FX_TYPE_STEP_JUMP: killFxOnSlot(row, fxIndex); break;
+#endif
 
                     default: killFxOnSlot(row, fxIndex);
 #ifdef FEATURE_SYNTH
@@ -1356,6 +1382,9 @@ AUDIO_CORE_RAM void Sequencer::play(uint8_t fromPos)
 
     reset_actual_pos();
     resetChanceState();
+#ifdef MOD_MASTER_MULTIPLIER
+    masterTimingStart(fromPos);
+#endif
 
     player.isStop = 0;
     player.isPlay = 1;
@@ -1399,6 +1428,9 @@ void Sequencer::playSelection(bool looped) // potrzebuje aktualnego zaznaczenia
 
     reset_actual_pos();
     resetChanceState();
+#ifdef MOD_MASTER_MULTIPLIER
+    masterTimingStop(); // selection playback bypasses the multiplier
+#endif
     for (uint8_t trackIdx = 0; trackIdx < kAllTracks; trackIdx++)
     {
         player.track[trackIdx].uStep = 1;
@@ -1640,6 +1672,9 @@ void Sequencer::stop(StopContext context)
 
     reset_actual_pos();
     resetChanceState();
+#ifdef MOD_MASTER_MULTIPLIER
+    masterTimingStop();
+#endif
 
     player.tempoFx.reset();
 
@@ -1943,6 +1978,41 @@ void Sequencer::switchRowStep(uint8_t row) // przełączamy stepy w zależności
             break;
     }
 
+#ifdef MOD_STEP_JUMP
+    // mode-specific advancement and passCount accounting are complete; a pending jump only
+    // overrides the position that was selected
+    applyPendingStepJump(row, trackLength);
+#endif
+
+#ifdef MOD_MASTER_MULTIPLIER
+    bool masterBoundary = false;
+    if (row == kAllTracks - 1)
+    {
+        if (!player.performanceMode && !player.selectionMode)
+        {
+            if (player.masterActiveMult > 1)
+            {
+                // one step of the master cycle has completed (this runs once per global step, muted or not)
+                player.masterStep++;
+                if (!player.breakPattern) // Pattern Break keeps its stock early transition
+                {
+                    // the physical wrap of the pattern no longer authorizes a transition; the master boundary does
+                    player.endOfPattern = (player.masterStep >= player.masterLength);
+                }
+            }
+            if (player.endOfPattern)
+            {
+                masterRestartTracks();
+                masterBoundary = true;
+            }
+        }
+        else
+        {
+            player.masterActiveMult = 1; // Performance Mode / selection playback: multiplier has no authority
+        }
+    }
+#endif
+
     if (player.endOfPattern)
     {
         bool isNextPatternAvailable = 0; // jeśli 0 to song sie skonczyl
@@ -2001,6 +2071,14 @@ void Sequencer::switchRowStep(uint8_t row) // przełączamy stepy w zależności
             PM->refreshTrackPattern = 1;
         }
     }
+
+#ifdef MOD_MASTER_MULTIPLIER
+    if (masterBoundary)
+    {
+        // adopt the multiplier of whichever pattern is now playing (changed edits apply from here)
+        masterTimingStart(0);
+    }
+#endif
 }
 
 // The next pattern is asked for one step before it is needed and loaded by the main loop.
@@ -2232,6 +2310,9 @@ AUDIO_CORE_RAM void Sequencer::reset_actual_pos(void)
         reset_actual_pos(row);
     }
 
+#ifdef MOD_STEP_JUMP
+    discardPendingStepJumps(); // pattern / song transition restarts every track
+#endif
     player.globalPos = 0;
 }
 
@@ -2254,6 +2335,39 @@ AUDIO_CORE_RAM void Sequencer::reset_actual_pos(uint8_t row, uint8_t delta /* = 
     }
 }
 
+#ifdef MOD_MASTER_MULTIPLIER
+// Latches the multiplier of the pattern that is playing now and starts a master cycle at startPos.
+AUDIO_CORE_RAM void Sequencer::masterTimingStart(uint8_t startPos)
+{
+    uint16_t steps = currentPattern->track[0].length + 1; // length is the last step index
+    player.masterActiveMult = getPatternMultiplier(currentPattern);
+    player.masterLength = steps * player.masterActiveMult;
+    player.masterStep = startPos < steps ? startPos : 0;
+}
+
+// Safe state: x1 means "stock behaviour", so nothing is left that could act on its own.
+AUDIO_CORE_RAM void Sequencer::masterTimingStop(void)
+{
+    player.masterActiveMult = 1;
+    player.masterLength = 0;
+    player.masterStep = 0;
+}
+
+// Master boundary: every ordinary track returns to step 1 regardless of where jumps left it,
+// and the per-cycle state of the optional sequencer features is cleared.
+AUDIO_CORE_RAM void Sequencer::masterRestartTracks(void)
+{
+    for (int row = 0; row < kAllTracks; row++)
+    {
+        player.track[row].actual_pos = MINSTEP;
+        player.track[row].actual_pos_absolute = MINSTEP;
+    }
+#ifdef MOD_STEP_JUMP
+    discardPendingStepJumps(); // a jump pending across a master restart must not survive it
+#endif
+}
+#endif
+
 AUDIO_CORE_RAM void Sequencer::resetChanceState(void)
 {
     player.activePatternIdx = mtProject.values.actualPattern;
@@ -2262,7 +2376,84 @@ AUDIO_CORE_RAM void Sequencer::resetChanceState(void)
         player.track[row].passCount = 0;
         player.track[row].lastCondFired = true;
     }
+#ifdef MOD_STEP_JUMP
+    discardPendingStepJumps(); // play / playSelection / stop / pre-roll
+#endif
 }
+
+#ifdef MOD_STEP_JUMP
+// Runs once per step at uStep==1 on the stepToSend snapshot (so live edits apply from the next
+// evaluation). Only records state - the jump is committed in applyPendingStepJump().
+AUDIO_CORE_RAM void Sequencer::evaluateStepJumpControl(uint8_t row)
+{
+    strPlayer::strPlayerTrack& playerRow = player.track[row];
+    const strPlayer::strPlayerTrack::strSendStep& step = playerRow.stepToSend;
+
+    playerRow.pendingJumpValid = false;
+
+    // FX loops scan index 1 (column 2) before index 0 (column 1); letting index 0 overwrite
+    // makes column 1 win when both hold a jump
+    int8_t jumpIdx = -1;
+    for (int8_t fxIndex = 1; fxIndex >= 0; fxIndex--)
+    {
+        if (step.fx[fxIndex].type == fx.FX_TYPE_STEP_JUMP)
+            jumpIdx = fxIndex;
+    }
+    if (jumpIdx < 0)
+        return;
+
+    if (isTrackEngineMuted(row))
+    {
+        // the stock Chance pass sits behind the mute return; on a muted track evaluate it here
+        // (first Chance found, same scan order) so Chance still gates the jump.
+        // Unmuted tracks keep the single stock evaluation, which clears the pending jump on failure.
+            for (int8_t fxIndex = 1; fxIndex >= 0; fxIndex--)
+            {
+                if (step.fx[fxIndex].type == fx.FX_TYPE_CHANCE)
+                {
+                    if (!evaluateChanceFx(row, step.fx[fxIndex].value))
+                        return;
+                    break;
+                }
+            }
+    }
+
+    playerRow.pendingJumpTarget = step.fx[jumpIdx].value;
+    playerRow.pendingJumpValid = true;
+}
+
+// Called at the end of switchRowStep() mode handling. Consumes the pending jump.
+AUDIO_CORE_RAM void Sequencer::applyPendingStepJump(uint8_t row, uint8_t trackLength)
+{
+    strPlayer::strPlayerTrack& playerRow = player.track[row];
+
+    if (!playerRow.pendingJumpValid)
+        return;
+    playerRow.pendingJumpValid = false; // always consumed, never carried over
+
+    if (player.breakPattern)
+        return; // global Break Pattern takes precedence
+
+    // same effective bounds the forward mode uses
+    int startPos = player.selectionModeLooped ? player.loopSelection.firstStep : 0;
+    int lastPos = player.selectionModeLooped ? std::min<int>(player.loopSelection.lastStep, trackLength)
+                                             : trackLength;
+    if (lastPos < startPos)
+        return;
+
+    int length = lastPos - startPos + 1;
+    int target = playerRow.pendingJumpTarget < 1 ? 1 : playerRow.pendingJumpTarget;
+    int destination = ((target - 1) % length) + 1; // user-visible 1..length
+
+    playerRow.actual_pos = startPos + destination - 1;
+}
+
+AUDIO_CORE_RAM void Sequencer::discardPendingStepJumps(void)
+{
+    for (int row = 0; row < kAllTracks; row++)
+        player.track[row].pendingJumpValid = false;
+}
+#endif
 
 AUDIO_CORE_RAM bool Sequencer::evaluateChanceFx(uint8_t row, uint8_t value)
 {
@@ -2635,6 +2826,12 @@ uint8_t Sequencer::recMicrotiming()
     return mtConfig.general.recOptions == recOptions_microtimingAndVelocity ||
            mtConfig.general.recOptions == recOptions_microtiming;
 }
+#ifdef MOD_LIVE_REC_TOGGLES
+bool Sequencer::getLiveRecMicrotiming()
+{
+    return liveRecMicrotimingOverride < 0 ? (recMicrotiming() != 0) : (liveRecMicrotimingOverride != 0);
+}
+#endif
 uint8_t Sequencer::recVelocity()
 {
     return mtConfig.general.recOptions == recOptions_microtimingAndVelocity ||
@@ -2718,6 +2915,12 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
         int8_t singleArmedTrack = getSingleArmedTrack();
         int startTrack = (singleArmedTrack >= 0) ? singleArmedTrack : getActualTrack();
         int endTrack = (singleArmedTrack >= 0) ? (singleArmedTrack + 1) : kAllTracks;
+#ifdef MOD_LIVE_REC_TOGGLES
+        // A source pressed while other sources are still held joins the open group: it keeps the
+        // settings captured when the group started.
+        const bool joinsOpenGroup = singleArmedTrack >= 0 && liveRecHeldNotesCount > 0 &&
+                                    player.track[singleArmedTrack].recOpen;
+#endif
 
         if (singleArmedTrack >= 0)
         {
@@ -2759,7 +2962,19 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
 
         for (int tr = startTrack; tr < endTrack; tr++)
         {
-            uint8_t destinationStep = isAnticipatedBeat1 ? 0 : getDestRecordingStep(tr, !recMicrotiming());
+#ifdef MOD_LIVE_REC_TOGGLES
+            // Captured settings (join) or the current global options (new recording lifecycle).
+            // Only committed to the track once the note actually enters the recording path below.
+            const bool trMicro = (joinsOpenGroup && tr == singleArmedTrack)
+                                   ? player.track[tr].recCapMicrotiming
+                                   : getLiveRecMicrotiming();
+            const bool trNoteOff = (joinsOpenGroup && tr == singleArmedTrack)
+                                     ? player.track[tr].recCapNoteOff
+                                     : liveRecNoteOffDetection;
+#else
+            const bool trMicro = recMicrotiming();
+#endif
+            uint8_t destinationStep = isAnticipatedBeat1 ? 0 : getDestRecordingStep(tr, !trMicro);
 
             strPattern::strTrack::strStep* step = &currentPattern->track[tr].step[destinationStep];
 
@@ -2818,8 +3033,12 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
 
                     player.track[tr].recOpen = 1;
                     player.track[tr].recNoteOnStepIdx = destinationStep;
+#ifdef MOD_LIVE_REC_TOGGLES
+                    player.track[tr].recCapMicrotiming = trMicro;
+                    player.track[tr].recCapNoteOff = trNoteOff;
+#endif
 
-                    if (recMicrotiming())
+                    if (trMicro)
                     {
                         step->micromove =
                           isAnticipatedBeat1
@@ -2938,6 +3157,21 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
                     {
                         step->volume = velocityToVolume(velocity);
                     }
+
+#ifdef MOD_MIDI_SLOT_TRIGGER
+                    // Edit-mode MIDI entry never wrote micromove. For slot-triggered notes, capture it
+                    // when Microtiming Detection is on, the sequencer is running and the cursor step
+                    // is the step currently being played (the same value live recording writes).
+                    if (midiSlotTriggerNoteInProgress && recMicrotiming() && isPlay() &&
+                        !player.preRecMetronomeActive &&
+                        player.track[trackIdx].actual_pos == sel->firstStep)
+                    {
+                        step->micromove =
+                          clamp<int>(mapClamped<int>(player.uStep, 1, 48, 0, 100),
+                                     getFxMin(fx.FX_TYPE_MICROMOVE),
+                                     getFxMax(fx.FX_TYPE_MICROMOVE));
+                    }
+#endif
                 }
                 break;
             }
@@ -3047,17 +3281,19 @@ void Sequencer::handleNoteOff(byte channel, // pochodzenie grida np. GRID_OUTSID
 
                     if (wasRecOpen && !padInstrumentEdit && !player.preRecMetronomeActive)
                     {
-                        uint8_t destinationStep = getDestRecordingStep(tr, !recMicrotiming(), true);
+                        uint8_t destinationStep =
+                          getDestRecordingStep(tr, !recMicroFor(tr), true);
                         strPattern::strTrack::strStep* step =
                           &currentPattern->track[tr].step[destinationStep];
 
-                        if (step->isNoteEmpty())
+                        // Only the pattern Note Off is gated; the preview release above already ran.
+                        if (recNoteOffFor(tr) && step->isNoteEmpty())
                         {
                             wasChangeInPattern = true;
 
                             step->note = STEP_NOTE_OFF_DEFAULT;
 
-                            if (recMicrotiming() && destinationStep == player.track[tr].actual_pos)
+                            if (recMicroFor(tr) && destinationStep == player.track[tr].actual_pos)
                             {
                                 step->micromove =
                                   clamp<int>(mapClamped<int>(player.uStep, 1, 48, 0, 100),
@@ -3074,7 +3310,7 @@ void Sequencer::handleNoteOff(byte channel, // pochodzenie grida np. GRID_OUTSID
             liveRecHeldNotesCount = 0;
             for (uint8_t tr = 0; tr < kAllTracks; tr++)
             {
-                uint8_t destinationStep = getDestRecordingStep(tr, !recMicrotiming(), true);
+                uint8_t destinationStep = getDestRecordingStep(tr, !recMicroFor(tr), true);
                 bool shouldOff = (player.track[tr].recOpen || player.track[tr].noteOpen) &&
                                  player.track[tr].stepSent.note == note;
 
@@ -3122,13 +3358,14 @@ void Sequencer::handleNoteOff(byte channel, // pochodzenie grida np. GRID_OUTSID
                         strPattern::strTrack::strStep* step =
                           &currentPattern->track[tr].step[destinationStep];
 
-                        if (step->isNoteEmpty())
+                        // Only the pattern Note Off is gated; the preview release above already ran.
+                        if (recNoteOffFor(tr) && step->isNoteEmpty())
                         {
                             wasChangeInPattern = true;
 
                             step->note = STEP_NOTE_OFF_DEFAULT;
 
-                            if (recMicrotiming() && destinationStep == player.track[tr].actual_pos)
+                            if (recMicroFor(tr) && destinationStep == player.track[tr].actual_pos)
                             {
                                 step->micromove =
                                   clamp<int>(mapClamped<int>(player.uStep, 1, 48, 0, 100),
@@ -3181,6 +3418,17 @@ void Sequencer::handleNoteOff(byte channel, // pochodzenie grida np. GRID_OUTSID
         newFileManager.setActualPatternStructChanged();
     }
 }
+
+#ifdef MOD_LAZY_CHOP
+bool Sequencer::getManualNoteBinding(uint8_t track, int16_t& source, uint8_t& instrument) const
+{
+    if (track >= kAllTracks || !player.track[track].noteOpen)
+        return false;
+    source = player.track[track].noteSource;
+    instrument = (uint8_t)player.track[track].stepSent.instrument;
+    return true;
+}
+#endif
 
 void Sequencer::updateTrackLengths(strPattern* pattern)
 {
@@ -3486,6 +3734,9 @@ void Sequencer::switchPerformanceTrackNow(uint8_t trackToSwitch)
     setPerformanceTrackLength(trackToSwitch, track_len);
     player.track[trackToSwitch].performanceSourcePattern = -1;
     player.track[trackToSwitch].passCount = 0;
+#ifdef MOD_STEP_JUMP
+    player.track[trackToSwitch].pendingJumpValid = false; // replacement wins over a pending jump
+#endif
 
     if (player.track[trackToSwitch].actual_pos_absolute > track_len)
     {

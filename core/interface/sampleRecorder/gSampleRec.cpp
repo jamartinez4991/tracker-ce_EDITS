@@ -271,10 +271,20 @@ void cSampleRecorder::showDefaultScreen()
         }
 
         // bottom labels
+#ifdef MOD_RECORDER_FORMAT_ACTIVE
+        // Two-line label (caption + value) like Gain: label value 1. Value 0 is the single-line
+        // layout, which left the Format value (text2) unreadable under the caption.
+        display.setControlValue(label[LEVEL_COL], 1);
+#else
         display.setControlValue(label[LEVEL_COL], 0);
+#endif
         display.setControlValue(label[7], 0);
         display.setControlText(label[0], "Source");
+#ifdef MOD_MONO_SAMPLING_ACTIVE
+        showFormat();
+#else
         display.setControlText(label[LEVEL_COL], "Level");
+#endif
         display.setControlText(label[GAIN_COL], "Gain");
 
         display.setControlText(label[7], "Record");
@@ -570,6 +580,30 @@ void cSampleRecorder::hideRadio()
     display.setControlValue(bgLabel, 255); // 0b11111011
     display.refreshControl(bgLabel);
 }
+
+#ifdef MOD_MONO_SAMPLING_ACTIVE
+void cSampleRecorder::showFormat()
+{
+    if (currentScreen != screenTypeConfig)
+    {
+        return;
+    }
+
+    display.setControlText(label[FORMAT_COL], "Format");
+#ifdef MOD_RECORDER_FORMAT_ACTIVE
+    // Effective format: the mic sources are mono-only whatever the selector says (see
+    // functActionRecord); the stored selection is left untouched.
+    const bool micSource = recorderConfig.source == sourceTypeMicLG ||
+                           recorderConfig.source == sourceTypeMicHG;
+    display.setControlText2(label[FORMAT_COL],
+                            (recorderConfig.recordMono || micSource) ? "Mono" : "Stereo");
+    display.setControlShow(label[FORMAT_COL]);
+#else
+    display.setControlText2(label[FORMAT_COL], recorderConfig.recordMono ? "Mono" : "Stereo");
+#endif
+    display.refreshControl(label[FORMAT_COL]);
+}
+#endif
 
 void cSampleRecorder::hideRDS()
 {
@@ -965,6 +999,9 @@ void cSampleRecorder::showSource()
         display.setControlText2(label[0], ptrSourcesNamesLabels[recorderConfig.source]);
         display.setControlShow(label[0]);
         display.refreshControl(label[0]);
+#ifdef MOD_RECORDER_FORMAT_ACTIVE
+        showFormat(); // effective format depends on the source (mics are mono-only)
+#endif
     }
 }
 
@@ -1011,6 +1048,9 @@ void cSampleRecorder::showGain()
 void cSampleRecorder::resizeSpectrum()
 {
     bool isStereo = isStereoSource();
+#ifdef MOD_MONO_SAMPLING_ACTIVE
+    isStereo = isStereo && !recorderConfig.recordMono;
+#endif
 
     if (isStereo)
     {
@@ -1032,6 +1072,12 @@ bool cSampleRecorder::isChannelShown(int channel)
     }
     else if (channel == 1)
     {
+#ifdef MOD_MONO_SAMPLING_ACTIVE
+        if (recorderConfig.recordMono)
+        {
+            return false;
+        }
+#endif
         return isStereoSource();
     }
 

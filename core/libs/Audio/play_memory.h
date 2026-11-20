@@ -142,6 +142,9 @@ class AudioPlayMemory : public AudioStream
     //************Reverse
     void setReverse();
     void clearReverse();
+#ifdef MOD_LAZY_CHOP
+    bool isReverse() const { return reverseDirectionFlag != 0; } // read-only (Lazy Chop)
+#endif
     //*********
     //************Pitch
     // Tune

@@ -63,7 +63,11 @@ const uint8_t INSTRUMENT_FILE_VERSION = 10;
 #else
 const uint8_t INSTRUMENT_FILE_VERSION = 9; // wersja struktury pliku instrumentu
 #endif
+#if defined(MOD_MASTER_MULTIPLIER)
+const uint8_t PATTERN_FILE_VERSION = 7; // 7: strPattern::rezerwa1 = master loop multiplier (0..7 = x1..x8)
+#else
 const uint8_t PATTERN_FILE_VERSION = 6;
+#endif
 
 const uint8_t CONFIG_STRUCT_VER = 10;
 
@@ -147,7 +151,11 @@ const uint8_t PATTERN_INDEX_MIN = 1;
 const uint8_t PATTERN_INDEX_MAX = 255;
 
 const uint8_t FX_MAX = 49;
+#if defined(MOD_STEP_JUMP) || defined(MOD_COND_CHANCE)
+const uint8_t FX_COUNT = 47; // +1 visible FX (Track Local Step Jump or Cond. Chance); FX_MAX (49) still exceeds the highest list index
+#else
 const uint8_t FX_COUNT = 46;
+#endif
 const uint8_t FX_COUNT_HIDDEN_FXes = 1; // ile fxów na końcu listy jest ukrytych
 
 const uint8_t FX_VALUE_MAX = 127;
@@ -1132,6 +1140,15 @@ struct strMtConfig
         uint8_t ccInChannel;
         uint8_t middleC;
         uint8_t slaveClockComp;
+#ifdef MOD_MIDI_SLOT_TRIGGER
+        // MIDI Instrument Slot Triggering (appended; size-prefixed struct stays backward compatible)
+        uint8_t slotTrigEnabled;
+        uint8_t slotTrigMode;
+        uint8_t slotTrigKeys;
+        uint8_t slotTrigStartNote;
+        uint8_t slotTrigStartOctave;
+        uint8_t slotTrigMagic; // 0x5A once the fields above are initialised
+#endif
     } midi;
 
     struct strGlobalValues

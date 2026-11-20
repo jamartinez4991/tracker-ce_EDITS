@@ -40,6 +40,89 @@ void mtSliceManager::addSlice(strInstrument* instr)
 
     instr->sliceNumber++;
 }
+#ifdef MOD_LAZY_CHOP
+uint8_t mtSliceManager::insertSlicesAtPositions(strInstrument* instr,
+                                                const uint16_t* positions,
+                                                uint8_t count)
+{
+    if (instr == nullptr || positions == nullptr || count == 0)
+        return 0;
+    if (instr->sliceNumber > MAX_SLICE_NUMBER)
+        return 0;
+
+    uint16_t sorted[MAX_SLICE_NUMBER];
+    if (count > MAX_SLICE_NUMBER)
+        count = MAX_SLICE_NUMBER;
+    for (uint8_t i = 0; i < count; i++) // insertion sort (<= 48 entries)
+    {
+        uint16_t v = positions[i];
+        int8_t j = (int8_t)i - 1;
+        while (j >= 0 && sorted[j] > v)
+        {
+            sorted[j + 1] = sorted[j];
+            j--;
+        }
+        sorted[j + 1] = v;
+    }
+
+    // Work on a copy so the instrument is only touched when something is really inserted.
+    uint16_t merged[MAX_SLICE_NUMBER];
+    uint8_t n = 0;
+    if (instr->sliceNumber == 0)
+    {
+        merged[n++] = 0; // the zero boundary is not a captured marker
+    }
+    else
+    {
+        for (uint8_t i = 0; i < instr->sliceNumber; i++)
+            merged[n++] = instr->slices[i];
+    }
+
+    uint8_t inserted = 0;
+    uint16_t lastInserted = 0;
+    for (uint8_t i = 0; i < count; i++)
+    {
+        const uint16_t p = sorted[i];
+        if (p >= MAX_16BIT) // the sample end is not a valid slice start
+            continue;
+        if (n >= MAX_SLICE_NUMBER)
+            break;
+
+        uint8_t pos = 0;
+        bool duplicate = false;
+        while (pos < n && merged[pos] < p)
+            pos++;
+        if (pos < n && merged[pos] == p)
+            duplicate = true;
+        if (duplicate)
+            continue;
+
+        for (uint8_t k = n; k > pos; k--)
+            merged[k] = merged[k - 1];
+        merged[pos] = p;
+        n++;
+        inserted++;
+        lastInserted = p;
+    }
+
+    if (inserted == 0)
+        return 0;
+
+    for (uint8_t i = 0; i < n; i++)
+        instr->slices[i] = merged[i];
+    instr->sliceNumber = n;
+    for (uint8_t i = 0; i < n; i++)
+    {
+        if (merged[i] == lastInserted)
+        {
+            instr->selectedSlice = i;
+            break;
+        }
+    }
+    return inserted;
+}
+#endif
+
 void mtSliceManager::removeSlice(strInstrument* instr)
 {
     if ((instr->sliceNumber == 0) || (instr->sliceNumber <= instr->selectedSlice))

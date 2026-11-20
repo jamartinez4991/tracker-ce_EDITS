@@ -1,0 +1,17 @@
+feature	flags	pr	branch	base_branch	depends	in_main
+mono-sampling	MOD_MONO_SAMPLING	1	feature/mono-sampling	main	-	y
+recorder-format	MOD_RECORDER_FORMAT	2	feature/recorder-format	feature/mono-sampling	mono-sampling	n
+sample-instrument-fx	MOD_SAMPLE_INSTRUMENT_FX	3	feature/sample-instrument-fx	main	-	y
+filter-rename	MOD_FILTER_RENAME	4	feature/filter-rename	feature/sample-instrument-fx	sample-instrument-fx	n
+pitch-lfo-extensions	MOD_PITCH_RANGE,MOD_LFO_SIGNED_DEPTH,MOD_LFO_POLARITY	5	feature/pitch-lfo-extensions	feature/sample-instrument-fx	sample-instrument-fx	n
+bipolar-mod-depth	MOD_BIPOLAR_MOD_DEPTH	6	feature/bipolar-mod-depth	feature/pitch-lfo-extensions	pitch-lfo-extensions	n
+lazy-chop	MOD_LAZY_CHOP	7	feature/lazy-chop	main	-	y
+live-recording-toggles	MOD_LIVE_REC_TOGGLES	8	feature/live-recording-toggles	main	-	y
+midi-slot-trigger	MOD_MIDI_SLOT_TRIGGER	9	feature/midi-slot-trigger	main	-	y
+step-jump	MOD_STEP_JUMP	10	feature/step-jump	main	-	n
+cond-chance	MOD_COND_CHANCE	11	feature/cond-chance	feature/step-jump	step-jump	n
+master-multiplier	MOD_MASTER_MULTIPLIER	12	feature/master-multiplier	main	-	y
+pattern-progression	MOD_PATTERN_PROGRESSION	13	feature/pattern-progression	feature/master-multiplier	master-multiplier	n
+pattern-bpm	MOD_PATTERN_BPM	14	feature/pattern-bpm	feature/master-multiplier	master-multiplier	n
+action-page4	MOD_ACTION_PAGE4	15	feature/action-page4	stack/page4-base	pattern-bpm,live-recording-toggles	n
+realtime-quantize-step-entry	MOD_REALTIME_QUANTIZE,MOD_STEP_ENTRY_DIVISION	16	feature/realtime-quantize-step-entry	feature/action-page4	action-page4	n

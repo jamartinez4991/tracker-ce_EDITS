@@ -1,0 +1,5 @@
+# Branch patterns (shell globs, one per line) that identify infrastructure-only PRs.
+# A PR whose head branch matches is NOT a firmware feature PR: PR validation builds the stock and merged
+# configurations only. Any other branch must be registered in features.tsv or PR validation fails.
+# Add a pattern here (in a reviewed PR) when introducing a new class of infrastructure/docs-only branch.
+infra/*

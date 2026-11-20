@@ -2199,6 +2199,18 @@ uint16_t playerEngine ::getWavePosition()
       ->getPosition(); // should be the same for all channels, so returned the first one
 }
 
+#ifdef MOD_LAZY_CHOP
+bool playerEngine ::isSamplePlaying()
+{
+    return playMemPtr[0]->isPlaying();
+}
+
+bool playerEngine ::isSampleReversed()
+{
+    return playMemPtr[0]->isReverse();
+}
+#endif
+
 int16_t* playerEngine ::getWaveStartAddressIfPlaying(int channel)
 {
     return playMemPtr[channel]->getStartAddresIfPlaying();

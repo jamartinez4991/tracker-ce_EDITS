@@ -7,6 +7,14 @@
 #include "mtKeyboardManager.h"
 #include "mtSequencer.h"
 
+// Page 3 keeps the multiplier / recording toggles only while Page 4 does not exist
+#if defined(MOD_LIVE_REC_TOGGLES) && !defined(MOD_ACTION_PAGE4)
+#define MOD_P3_TOGGLES
+#endif
+#if defined(MOD_MASTER_MULTIPLIER) && !defined(MOD_ACTION_PAGE4)
+#define MOD_P3_MULTIPLIER
+#endif
+
 uint8_t isMultiSelection();
 uint8_t isMultiSelectionOnOneLine();
 int16_t getActualStep();
@@ -74,6 +82,10 @@ class cPatternEditor : public ModuleBase
     void changeActualPatternLength(int16_t value);
     void changeActualPatternLengthByDefinedValues(int16_t value);
     void setActualPatternLength(int16_t value);
+#ifdef MOD_MASTER_MULTIPLIER
+    void changeActualPatternMultiplier(int16_t value);
+    void setActualPatternMultiplier(int16_t value);
+#endif
     void changeActualPatternEditStep(int16_t value);
     void changeActualPatternEditStepByDefinedValues(int16_t value);
     void setActualPatternEditStep(int16_t value);
@@ -121,6 +133,9 @@ class cPatternEditor : public ModuleBase
     void showPattern(uint8_t forceShow = 0, uint8_t shiftPressed = 0);
     void showLength(uint8_t forceShow = 0);
     void showStep();
+#ifdef MOD_MASTER_MULTIPLIER
+    void showMultiplier(uint8_t forceShow = 0);
+#endif
 
     void refreshPatternParams();
     void showFxInfo();
@@ -184,6 +199,10 @@ class cPatternEditor : public ModuleBase
     uint16_t lastShownPattern_blinkState = 0;
 
     uint16_t lastLength = 0;
+#ifdef MOD_MASTER_MULTIPLIER
+    uint8_t lastMultiplier = 0;
+    char cMultiplier[5];
+#endif
 
     uint8_t isCursorInSelection();
     bool isSelectionOrCursorInMidiTracks();

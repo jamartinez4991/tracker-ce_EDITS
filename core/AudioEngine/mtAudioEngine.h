@@ -337,6 +337,11 @@ class playerEngine
     uint32_t getEnvelopeWtPosMod();
 
     uint16_t getWavePosition();
+#ifdef MOD_LAZY_CHOP
+    // Per-voice, read-only queries used by Lazy Chop (never call getWavePosition() unless playing).
+    bool isSamplePlaying();
+    bool isSampleReversed();
+#endif
     int16_t* getWaveStartAddressIfPlaying(int channel);
     uint32_t getLengthIfPlaying();
     void update();

@@ -91,6 +91,11 @@ class VoiceStreamManager
     // For after the card was remounted: the files may have moved on it.
     void rebindAllInstrumentStreamFiles();
     void refreshInstrumentSliceCache(int instrIdx);
+#ifdef MOD_LAZY_CHOP
+    // Deferred variant: remembered, then executed from update() once no voice reads the instrument
+    // and no asynchronous SD read is outstanding. Safe to call repeatedly.
+    void requestInstrumentSliceCacheRefresh(int instrIdx);
+#endif
     void refreshInstrumentSingleSliceCache(int instrIdx, uint8_t sliceIdx);
 
     // Blocking read of arbitrary frame range from a streamed instrument's backing file
@@ -159,6 +164,10 @@ class VoiceStreamManager
         uint32_t expectedGeneration = 0;
     };
 
+#ifdef MOD_LAZY_CHOP
+    uint64_t pendingSliceCacheRefresh = 0; // bit per instrument (kMaxInstruments = 48)
+    void servicePendingSliceCacheRefresh();
+#endif
     FileSystem* fs = nullptr;
     VoiceStreamState voices[kVoiceCount];
     AsyncJob currentJob;
