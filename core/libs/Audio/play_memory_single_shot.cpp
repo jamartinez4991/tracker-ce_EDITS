@@ -173,14 +173,14 @@ AUDIO_CORE_RAM audio_block_t* AudioPlayMemory::updateSingleShotNormal()
                         if (pitchSmoothingControlCounter <= constrainsInSamples.pitchSmoothing)
                         {
                             pitchControl += pitchSmoothingControl;
-                            if (pitchControl > notes[MAX_NOTE - 1])
+                            if (pitchControl > PM_PITCH_HI(notes))
                             {
-                                pitchControl = notes[MAX_NOTE - 1];
+                                pitchControl = PM_PITCH_HI(notes);
                                 pitchSmoothingControlCounter = constrainsInSamples.pitchSmoothing;
                             }
-                            else if (pitchControl < notes[MIN_NOTE])
+                            else if (pitchControl < PM_PITCH_LO(notes))
                             {
-                                pitchControl = notes[MIN_NOTE];
+                                pitchControl = PM_PITCH_LO(notes);
                                 pitchSmoothingControlCounter = constrainsInSamples.pitchSmoothing;
                             }
                             castPitchControl = (int32_t)pitchControl;
@@ -322,14 +322,14 @@ AUDIO_CORE_RAM audio_block_t* AudioPlayMemory::updateSingleShotReverse()
                         if (pitchSmoothingControlCounter <= constrainsInSamples.pitchSmoothing)
                         {
                             pitchControl += pitchSmoothingControl;
-                            if (pitchControl > notes[MAX_NOTE - 1])
+                            if (pitchControl > PM_PITCH_HI(notes))
                             {
-                                pitchControl = notes[MAX_NOTE - 1];
+                                pitchControl = PM_PITCH_HI(notes);
                                 pitchSmoothingControlCounter = constrainsInSamples.pitchSmoothing;
                             }
-                            else if (pitchControl < notes[MIN_NOTE])
+                            else if (pitchControl < PM_PITCH_LO(notes))
                             {
-                                pitchControl = notes[MIN_NOTE];
+                                pitchControl = PM_PITCH_LO(notes);
                                 pitchSmoothingControlCounter = constrainsInSamples.pitchSmoothing;
                             }
                             castPitchControl = (int32_t)-pitchControl;

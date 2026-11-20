@@ -290,6 +290,9 @@ class playerEngine
     void modPitch(float value);
     void modGlide(uint16_t value);
     void modFineTune(int8_t value);
+#ifdef MOD_PITCH_RANGE
+    void modPitchModulation(float cents);
+#endif
 
     void modPanning(int16_t value);
     void modVolume(float value);
