@@ -5,7 +5,7 @@ feature's state. Machine-readable feature list (flags, branches, dependencies): 
 Build rules and reuse: [`BUILD_VALIDATION.md`](BUILD_VALIDATION.md). Procedure: [`PR_WORKFLOW.md`](PR_WORKFLOW.md).
 
 **Repository:** `jamartinez4991/tracker-ce_EDITS` (personal fork; separate from any upstream-contribution work)
-**`main`:** `e6e4fca` (merge of PR #12) — last updated 2026-11-20
+**`main`:** `a18b8ad` (merge of PR #10) — last updated 2026-11-20
 **Upstream baseline:** `polyend/tracker-ce` `922bba0` (the fork's `main` was branched from it; not re-checked for newer upstream commits — we deliberately stay on it)
 **Integrated reference branch:** `custom-firmware` (all features except the discarded Modified Chance; used only for comparison, not a merge target)
 **Default branch:** `main`
@@ -31,12 +31,12 @@ Statuses: Proposed · In Development · Awaiting Rebase · Rebased · Awaiting V
 | 2 | Recorder format display | `MOD_RECORDER_FORMAT` | `feature/recorder-format` (`e924009`) | **no** (see note 1) | Awaiting Rebase | #1 | – |
 | 3 | Sample instrument FX (SRR, DJ filter) + shared instrument ext block v10 | `MOD_SAMPLE_INSTRUMENT_FX` | `feature/sample-instrument-fx` (`87dad36`) | **yes** | Merged | – | #4, #5 |
 | 4 | Filter rename | `MOD_FILTER_RENAME` | `feature/filter-rename` (`70f3a68`) | **no** (note 1) | Awaiting Rebase | #3 | – |
-| 5 | Pitch range, signed LFO depth, LFO polarity | `MOD_PITCH_RANGE` `MOD_LFO_SIGNED_DEPTH` `MOD_LFO_POLARITY` | `feature/pitch-lfo-extensions` (`b062b5d`) | **no** (note 1) | Awaiting Rebase | #3 | #6 |
+| 5 | Pitch range, signed LFO depth, LFO polarity | `MOD_PITCH_RANGE` `MOD_LFO_SIGNED_DEPTH` `MOD_LFO_POLARITY` | `integrate/pitch-lfo-extensions` (original `feature/pitch-lfo-extensions` commit `17ca6bc` + merge of `main`) | **no** (note 1) | Awaiting Review (integration step 1, replacement PR) | #3 | #6 |
 | 6 | Bipolar modulation depth | `MOD_BIPOLAR_MOD_DEPTH` | `feature/bipolar-mod-depth` (`45fef02`) | **no** (note 1) | Awaiting Rebase | #5 | – |
 | 7 | Lazy Chop | `MOD_LAZY_CHOP` | `feature/lazy-chop` (`1a9a26e`) | **yes** | Merged | – | – |
 | 8 | Live recording toggles (Note Off, Microtiming) | `MOD_LIVE_REC_TOGGLES` | `feature/live-recording-toggles` (`b02b749`) | **yes** | Merged | – | #15, #16 |
 | 9 | MIDI instrument slot trigger | `MOD_MIDI_SLOT_TRIGGER` | `feature/midi-slot-trigger` (`bc46af7`) | **yes** | Merged | – | – |
-| 10 | Track-local Step Jump (FX id 51) | `MOD_STEP_JUMP` | `feature/step-jump` (`d827799`) | no | Awaiting Review (rebased, validated; PR clean) | – | #11 |
+| 10 | Track-local Step Jump (FX id 51) | `MOD_STEP_JUMP` | `feature/step-jump` (`d827799`) | **yes** | Merged | – | #11 |
 | 11 | Cond. Chance (FX id 52; replaces Modified Chance) | `MOD_COND_CHANCE` | `feature/cond-chance` (`771190f`) | no | Awaiting Rebase (base `feature/step-jump` has moved; conflicts with `main`; glue pending) | #10 | – |
 | 12 | Master Timing Loop Multiplier ×1..×8, pattern v7 | `MOD_MASTER_MULTIPLIER` | `feature/master-multiplier` (`d1d45d1`) | **yes** | Merged | – | #13, #14 |
 | 13 | Pattern progression | `MOD_PATTERN_PROGRESSION` | `feature/pattern-progression` (`93f413a`) | no | Awaiting Rebase (conflicts with `main`) | #12 | – |
@@ -56,14 +56,23 @@ with `main`). Treat them as **not integrated**.
 
 ## Integration order
 
-Already in `main`: #1, #3, #7, #8, #9, #12.
+Already in `main`: #1, #3, #7, #8, #9, #10, #12.
 
-1. **#10 Step Jump** — rebased on current `main`; its `masterRestartTracks()` glue (`discardPendingStepJumps()`) is included.
-2. **#11 Cond. Chance** — after #10; add `resetCondChanceState()` to `masterRestartTracks()` (see Decisions).
-3. **#13 Pattern progression** and **#14 Pattern BPM** — after rebasing onto `main` (they were stacked on the old #12 commit).
-4. **#15 Action Page 4** — after #14 (and #8, already in); it relocates Page 3 items to Page 4. Its base `stack/page4-base` is obsolete.
-5. **#16 Realtime Quantize + Step Entry Division** — after #15.
-6. **#2, #4, #5, #6** can be integrated at any time via new PRs against `main` (#6 after #5). They are independent of the sequencer work.
+Approved plan (2026-11-20): one PR per step, each from a fresh `integrate/*` branch; the original PR branches are kept
+untouched as history (no force-push, no rewriting). Missing integration glue goes into the PR that needs it.
+Mono sampling stays Plus/Mini only.
+
+| Step | Content | Branch | Status |
+|---|---|---|---|
+| 1 | #5 Pitch range / signed LFO depth / LFO polarity | `integrate/pitch-lfo-extensions` | Awaiting Review |
+| 2 | #6 Bipolar modulation depth (after #5) | `integrate/bipolar-mod-depth` | Not started |
+| 3 | #4 Filter rename, #2 Recorder format | `integrate/filter-rename`, `integrate/recorder-format` | Not started |
+| 4 | #11 Cond. Chance (+ `resetCondChanceState()` glue) | `integrate/cond-chance` | Not started |
+| 5 | #14 Pattern BPM, then #13 Pattern progression | `integrate/pattern-bpm`, `integrate/pattern-progression` | Not started |
+| 6 | #15 Action Page 4 | `integrate/action-page4` | Not started |
+| 7 | #16 Realtime Quantize + Step Entry Division | `integrate/realtime-quantize-step-entry` | Not started |
+
+Final audit: compare `main` with `custom-firmware`; build every flag on all three devices.
 
 ## Shared code and integration points
 
