@@ -407,6 +407,12 @@ class InterfaceGlobals
         Sequencer::strFxConsts::enFxType::FX_TYPE_SEND_CC_E,
         Sequencer::strFxConsts::enFxType::FX_TYPE_SEND_CC_F,
         Sequencer::strFxConsts::enFxType::FX_TYPE_MIDI_CHORD,
+#ifdef MOD_STEP_JUMP
+        Sequencer::strFxConsts::enFxType::FX_TYPE_STEP_JUMP,
+#endif
+#ifdef MOD_COND_CHANCE
+        Sequencer::strFxConsts::enFxType::FX_TYPE_COND_CHANCE,
+#endif
         Sequencer::strFxConsts::enFxType::FX_TYPE_BREAK_PATTERN,
 
     };
@@ -467,6 +473,12 @@ class InterfaceGlobals
                                                                   "f - CC F",
 #endif
                                                                   "0 - MIDI Chord",
+#ifdef MOD_STEP_JUMP
+                                                                  "u - Step Jump",
+#endif
+#ifdef MOD_COND_CHANCE
+                                                                  "o - Cond. Chance",
+#endif
                                                                   "x - Break pattern" };
 
     static constexpr char fxShortNames[FX_COUNT][FX_NAME_SIZE + 4] = { "None",
@@ -523,6 +535,12 @@ class InterfaceGlobals
                                                                        "CC F",
 #endif
                                                                        "MIDI Chord",
+#ifdef MOD_STEP_JUMP
+                                                                       "Step Jump",
+#endif
+#ifdef MOD_COND_CHANCE
+                                                                       "Cond. Chance",
+#endif
                                                                        "Break pattern" };
 
     static constexpr const char* ptrAllFxNames[FX_COUNT + 1] = {
@@ -536,6 +554,12 @@ class InterfaceGlobals
         &fxNames[34][0], &fxNames[35][0], &fxNames[36][0], &fxNames[37][0], &fxNames[38][0],
         &fxNames[39][0], &fxNames[40][0], &fxNames[41][0], &fxNames[42][0],
         &fxNames[43][0], &fxNames[44][0], &fxNames[45][0]
+#ifdef MOD_STEP_JUMP
+        , &fxNames[46][0]
+#endif
+#ifdef MOD_COND_CHANCE
+        , &fxNames[FX_COUNT - 1][0]
+#endif
     };
 
     static constexpr const char* ptrAllFxNamesShort[FX_COUNT + 1] = {
@@ -586,6 +610,12 @@ class InterfaceGlobals
         &fxShortNames[43][0],
         &fxShortNames[44][0],
         &fxShortNames[45][0]
+#ifdef MOD_STEP_JUMP
+        , &fxShortNames[46][0]
+#endif
+#ifdef MOD_COND_CHANCE
+        , &fxShortNames[FX_COUNT - 1][0]
+#endif
     };
 
     static constexpr const char* const* ptrFxNames = &ptrAllFxNames[1];

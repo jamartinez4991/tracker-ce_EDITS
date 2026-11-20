@@ -184,6 +184,12 @@ class Sequencer
             FX_TYPE_R7,
             FX_TYPE_R8,
             FX_TYPE_R9,
+#ifdef MOD_STEP_JUMP
+            FX_TYPE_STEP_JUMP, // appended after legacy ids; value 1..128 = target step
+#endif
+#ifdef MOD_COND_CHANCE
+            FX_TYPE_COND_CHANCE = 52, // fixed id (stable in saved patterns whichever mods are built)
+#endif
 
         };
 
@@ -494,6 +500,19 @@ class Sequencer
             uint8_t cancelStep = 0;
             uint32_t passCount = 0;
             bool lastCondFired = true;
+#ifdef MOD_COND_CHANCE
+            // Conditional Chance: per-step encounter phase, owned by the track. 128 bytes/track.
+            uint8_t condPhase[128] = {};
+            bool condDecided = false; // evaluated for the current step encounter
+            bool condFired = true;
+            uint32_t stepSerial = 0;                 // bumped at every step boundary of this track
+            uint32_t condEvalSerial = 0xFFFFFFFFu;   // serial of the last evaluation (idempotence guard)
+#endif
+#ifdef MOD_STEP_JUMP
+            // Track Local Step Jump: recorded at uStep==1, consumed at the next step boundary
+            bool pendingJumpValid = false;
+            uint8_t pendingJumpTarget = 1; // user-visible step 1..128 as entered; resolved when consumed
+#endif
 
             struct strRollFx
             {
@@ -799,6 +818,10 @@ class Sequencer
     void recEnable(bool enable);
     void stop(void);
     void stopManualNotes(void);
+#ifdef MOD_LAZY_CHOP
+    // True when `track` holds an open manual (preview) note; reports its source and instrument.
+    bool getManualNoteBinding(uint8_t track, int16_t& source, uint8_t& instrument) const;
+#endif
     void continueSong(uint8_t songPos);
     void loopCurrentPattern(uint8_t songPos);
     int16_t findSlotWithPattern();
@@ -1067,6 +1090,21 @@ class Sequencer
     void masterRestartTracks(void);
 #endif
     bool evaluateChanceFx(uint8_t row, uint8_t value);
+#ifdef MOD_COND_CHANCE
+    void evaluateCondChanceControl(uint8_t row);
+
+  public:
+    // Clear all (or one track's) Cond. Chance encounter phases (playback init, pattern change, master boundary...)
+    void resetCondChanceState();
+    void resetCondChanceState(uint8_t row);
+
+  private:
+#endif
+#ifdef MOD_STEP_JUMP
+    void evaluateStepJumpControl(uint8_t row);
+    void applyPendingStepJump(uint8_t row, uint8_t trackLength);
+    void discardPendingStepJumps(void);
+#endif
 
     void play_microStep(int row);
     void inc_uStep(uint8_t row);

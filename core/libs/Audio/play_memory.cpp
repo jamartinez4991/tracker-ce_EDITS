@@ -138,6 +138,31 @@ AUDIO_CORE_RAM void AudioPlayMemory::update(void)
         return;
     }
 
+#ifdef MOD_PITCH_RANGE
+    // Apply the cached modulation ratio to the *effective* pitch for this block only. The base
+    // pitchControl (tune, fine-tune, glide, note) is restored afterwards, so modulation never
+    // accumulates into it. Glide steps are scaled by the same ratio so glide keeps its base-domain
+    // speed; any glide advance made inside the block is converted back to the base domain.
+    const bool pmApply = pitchModActive;
+    float pmBase = 0, pmBaseSmooth = 0, pmEffStart = 0, pmEffSmooth = 0;
+    if (pmApply)
+    {
+        const float* pmTbl = (currentPlayMode != playModeWavetable) ? notes : wt_notes;
+        pitchBoundHiScale = kPitchEffHiScale;
+        pitchBoundLoScale = kPitchEffLoScale;
+        pmBase = pitchControl;
+        pmBaseSmooth = pitchSmoothingControl;
+        float eff = pmBase * pitchModulationRatio;
+        const float hi = pmTbl[MAX_NOTE - 1] * kPitchEffHiScale;
+        const float lo = pmTbl[MIN_NOTE] * kPitchEffLoScale;
+        eff = eff > hi ? hi : (eff < lo ? lo : eff);
+        pmEffStart = eff;
+        pmEffSmooth = pmBaseSmooth * pitchModulationRatio;
+        pitchControl = eff;
+        pitchSmoothingControl = pmEffSmooth;
+    }
+#endif
+
     audio_block_t* block = nullptr;
     switch (currentPlayMode)
     {
@@ -152,6 +177,20 @@ AUDIO_CORE_RAM void AudioPlayMemory::update(void)
         default: break;
     }
 
+#ifdef MOD_PITCH_RANGE
+    if (pmApply)
+    {
+        // glide advance inside the block (effective domain) -> base domain
+        pitchControl = pmBase + (pitchControl - pmEffStart) / pitchModulationRatio;
+        if (pitchSmoothingControl == pmEffSmooth)
+            pitchSmoothingControl = pmBaseSmooth;
+        else
+            pitchSmoothingControl = pitchSmoothingControl / pitchModulationRatio;
+        pitchBoundHiScale = 1.0f;
+        pitchBoundLoScale = 1.0f;
+    }
+#endif
+
     if (isHeadroomEnabled)
     {
         lowerVolume3dB(block);
@@ -159,6 +198,23 @@ AUDIO_CORE_RAM void AudioPlayMemory::update(void)
 
     envelopeUpdate(block);
 }
+
+#ifdef MOD_PITCH_RANGE
+void AudioPlayMemory::setPitchModulationCents(float cents)
+{
+    if (cents > kPitchModMaxCents)
+        cents = kPitchModMaxCents;
+    else if (cents < -kPitchModMaxCents)
+        cents = -kPitchModMaxCents;
+
+    // exp2f is evaluated here (on modulation change), never per sample.
+    const float ratio = (cents == 0.0f) ? 1.0f : exp2f(cents * (1.0f / 1200.0f));
+    AudioNoInterrupts();
+    pitchModulationRatio = ratio;
+    pitchModActive = (cents != 0.0f);
+    AudioInterrupts();
+}
+#endif
 
 AUDIO_CORE_RAM void AudioPlayMemory::lowerVolume3dB(audio_block_t* block)
 {
@@ -185,6 +241,10 @@ void AudioPlayMemory::init(Timer* timer, int channel, int voiceIdx)
 //**************************************************************************************PLAY
 AUDIO_CORE_FLASH uint8_t AudioPlayMemory::play(uint8_t instrIdx, int8_t note)
 {
+#ifdef MOD_PITCH_RANGE
+    pitchModulationRatio = 1.0f; // a new note starts unmodulated; the next refresh re-applies it
+    pitchModActive = false;
+#endif
     switch (mtProject.instrument[instrIdx].playMode)
     {
         case playModeSingleShot: playSingleShot(instrIdx, note); break;

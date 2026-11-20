@@ -59,6 +59,10 @@ AUDIO_CORE_RAM void playerEngine::update()
         handleUpdateRefreshReverb();
         handleUpdateRefreshOverdrive();
         handleUpdateRefreshBitDepth();
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+        handleUpdateRefreshSampleRateReduction();
+        handleUpdateRefreshDjFilter();
+#endif
         handleUpdateRefreshGranLen();
         handleUpdateRefreshGranWave();
         handleUpdateRefreshGranLoop();
@@ -252,8 +256,21 @@ inline void playerEngine::handleUpdateRefreshFinetune()
             currentEnvelopeModification[envFinetune] = 0;
         }
 
+#ifdef MOD_PITCH_RANGE
+        // Extended pitch range: the envelope/LFO output scales the combined semitone+cent depth
+        // (float cents, no integer quantisation) and goes to the playback engine as a pitch ratio.
+        // Ordinary fine-tune (below) no longer receives the modulation.
+        {
+            const strInstrument& pmInstr = mtProject.instrument[currentInstrument_idx];
+            const float combinedDepthCents =
+              (float)pmInstr.pitchModSemitones * 100.0f + (float)pmInstr.pitchModCents;
+            modPitchModulation(currentEnvelopeModification[envFinetune] * combinedDepthCents);
+        }
+        int32_t localFinetuneMod = 0;
+#else
         int32_t localFinetuneMod =
           currentEnvelopeModification[envFinetune] * MAX_INSTRUMENT_FINETUNE;
+#endif
 
         int16_t localFinetune = 0;
 
@@ -538,6 +555,27 @@ inline void playerEngine::handleUpdateRefreshBitDepth()
         modBitDepth(bitDepth);
     }
 }
+
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+// Static instrument parameters: no performance-mode / sequencer-modulation override paths.
+inline void playerEngine::handleUpdateRefreshSampleRateReduction()
+{
+    if (refreshRegister & SAMPLE_RATE_REDUCTION_MASK)
+    {
+        refreshRegister &= (~SAMPLE_RATE_REDUCTION_MASK);
+        modSampleRateReduction(mtProject.instrument[currentInstrument_idx].sampleRateReduction);
+    }
+}
+
+inline void playerEngine::handleUpdateRefreshDjFilter()
+{
+    if (refreshRegister & DJ_FILTER_MASK)
+    {
+        refreshRegister &= (~DJ_FILTER_MASK);
+        modDjFilter(mtProject.instrument[currentInstrument_idx].djFilter);
+    }
+}
+#endif
 
 inline void playerEngine::handleUpdateRefreshWtPos()
 {

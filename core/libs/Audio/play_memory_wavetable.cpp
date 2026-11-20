@@ -153,14 +153,14 @@ AUDIO_CORE_FLASH audio_block_t* AudioPlayMemory::updateWavetable()
                     if (pitchSmoothingControlCounter <= constrainsInSamples.pitchSmoothing)
                     {
                         pitchControl += pitchSmoothingControl;
-                        if (pitchControl > wt_notes[MAX_NOTE - 1])
+                        if (pitchControl > PM_PITCH_HI(wt_notes))
                         {
-                            pitchControl = wt_notes[MAX_NOTE - 1];
+                            pitchControl = PM_PITCH_HI(wt_notes);
                             pitchSmoothingControlCounter = constrainsInSamples.pitchSmoothing;
                         }
-                        else if (pitchControl < wt_notes[MIN_NOTE])
+                        else if (pitchControl < PM_PITCH_LO(wt_notes))
                         {
-                            pitchControl = wt_notes[MIN_NOTE];
+                            pitchControl = PM_PITCH_LO(wt_notes);
                             pitchSmoothingControlCounter = constrainsInSamples.pitchSmoothing;
                         }
                         castPitchControl = (int32_t)pitchControl;

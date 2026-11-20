@@ -2,6 +2,9 @@
 #include "configEditor/configEditor.h"
 
 #include "configEditor/configMenuActions.h"
+#ifdef MOD_MIDI_SLOT_TRIGGER
+#include "mtMidiSlotTrigger.h"
+#endif
 #include "ThemeManager.h"
 
 #include "imageViewer/imageViewerDefs.h"
@@ -197,7 +200,12 @@ const strItemTypeListText notesOutModeSetup{ &mtConfig.midi.notesOutMode, 4, mid
 const strItemTypeListText notesInChanneletup{ &mtConfig.midi.notesInChannel, 17, notesChannel };
 const strItemTypeListText ccInModeSetup{ &mtConfig.midi.ccInMode, 4, midiIn };
 const strItemTypeListText ccInChannelSetup{ &mtConfig.midi.ccInChannel, 17, notesChannel };
+#ifdef MOD_MIDI_SLOT_TRIGGER
+// Middle C changes the note names shown by the slot-trigger start note, so refresh them on change
+const strItemTypeListTextWithAction middleCSetup{ &mtConfig.midi.middleC, 4, middleC, midiSlotTriggerRefreshLabels };
+#else
 const strItemTypeListText middleCSetup{ &mtConfig.midi.middleC, 4, middleC };
+#endif
 const strItemTypeListTextWithAction slaveClockCompSetup{ &mtConfig.midi.slaveClockComp, std::size(slaveClockComp),  slaveClockComp, setSlaveClockCompValue };
 
 cMenuItem melClockIn(menuMidi, "Clock in", nullptr, menuTypeItemListText, &clockInSetup);
@@ -225,12 +233,33 @@ cMenuItem melCCInChannel(menuMidi,
                          supportedCcInDesc,
                          menuTypeItemListText,
                          &ccInChannelSetup);
+#ifdef MOD_MIDI_SLOT_TRIGGER
+cMenuItem melMiddleC(menuMidi, "Middle C", nullptr, menuTypeItemListTextWithAction, &middleCSetup);
+#else
 cMenuItem melMiddleC(menuMidi, "Middle C", nullptr, menuTypeItemListText, &middleCSetup);
+#endif
 cMenuItem melSlaveClockComp(menuMidi,
                             "Clock sync correction",
                             slaveClockCompDesc,
                             menuTypeItemListTextWithAction,
                             &slaveClockCompSetup);
+
+#ifdef MOD_MIDI_SLOT_TRIGGER
+// MIDI Instrument Slot Triggering (all items always listed; Start note applies to Drum and
+// Keyboard/Chromatic, Start octave to Keyboard/White keys)
+const strItemTypeListText slotTrigEnableSetup{ &mtConfig.midi.slotTrigEnabled, 2, onOffStateTexts };
+const strItemTypeListText slotTrigModeSetup{ &mtConfig.midi.slotTrigMode, 2, slotTrigModeTexts };
+const strItemTypeListText slotTrigKeysSetup{ &mtConfig.midi.slotTrigKeys, 2, slotTrigKeysTexts };
+const strItemTypeListText slotTrigNoteSetup{ &mtConfig.midi.slotTrigStartNote, 128, kMidiSlotNoteLabels };
+const strItemTypeListText slotTrigOctaveSetup{ &mtConfig.midi.slotTrigStartOctave, kSlotTrigOctaveCount, kMidiSlotOctaveLabels };
+
+const char* const slotTrigDesc = "Pattern editor, Instrument column: incoming MIDI notes trigger instrument slots";
+cMenuItem melSlotTrigEnable(menuMidi, "Slot trigger", slotTrigDesc, menuTypeItemListText, &slotTrigEnableSetup);
+cMenuItem melSlotTrigMode(menuMidi, "Slot trig mode", slotTrigDesc, menuTypeItemListText, &slotTrigModeSetup);
+cMenuItem melSlotTrigKeys(menuMidi, "Slot trig keys", slotTrigDesc, menuTypeItemListText, &slotTrigKeysSetup);
+cMenuItem melSlotTrigNote(menuMidi, "Slot trig note", slotTrigDesc, menuTypeItemListText, &slotTrigNoteSetup);
+cMenuItem melSlotTrigOctave(menuMidi, "Slot trig octave", slotTrigDesc, menuTypeItemListText, &slotTrigOctaveSetup);
+#endif
 
 //==================================================================================================================================================================
 // Firmware

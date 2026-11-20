@@ -437,6 +437,18 @@ void envelopeGenerator::calc()
                 tempOutput = amount; // przy attack - 0 powstawał nan i loop dzialal nieprawidlowo -
                                      // andrzej2000
 
+#ifdef MOD_BIPOLAR_MOD_DEPTH
+            // Signed amount: with a negative amount the attack ramps from killOutput (<= 0) down
+            // towards amount, so the stock lower clamp at killOutput would pin it at 0. Mirror the
+            // clamp for negative amounts; positive amounts keep the stock clamp bit-for-bit.
+            if (!isRandom && amount < 0.0f)
+            {
+                envTemp.tempOutput = clamp<float>(
+                  tempOutput, MIN_OUTPUT, (envTemp.killOutput < 0.0f) ? envTemp.killOutput : 0.0f);
+                envTemp.maxOutput = envTemp.tempOutput;
+                break;
+            }
+#endif
             envTemp.tempOutput =
               isRandom ? randomValue : clamp<float>(tempOutput, envTemp.killOutput, MAX_OUTPUT);
             envTemp.maxOutput = envTemp.tempOutput;
@@ -535,13 +547,29 @@ float envelopeGenerator::fMap(float x, float in_min, float in_max, float out_min
     return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 
+#ifdef MOD_LFO_CANONICAL
+// canonical x in [-1,+1] -> optional unipolar (x+1)/2 (linear shift+scale, not rectification)
+// -> signed depth. Non-LFO loop modes pass through untouched.
+float envelopeGenerator::shapeLfoOutput(float canonical) const
+{
+    if (envelope->loop != 1 && envelope->loop != 3)
+        return canonical;
+    const float shaped = lfoUnipolar ? (canonical + 1.0f) * 0.5f : canonical;
+    return shaped * lfoDepth;
+}
+#endif
+
 float envelopeGenerator::getOut()
 {
     if (!envelope || !envelope->enable)
         return 0.0;
 
     calc();
+#ifdef MOD_LFO_CANONICAL
+    return shapeLfoOutput(envTemp.output);
+#else
     return (envTemp.output);
+#endif
 }
 
 float envelopeGenerator::getLastOut()
@@ -550,7 +578,11 @@ float envelopeGenerator::getLastOut()
     if (!envelope || !envelope->enable)
         return 0.0;
 
+#ifdef MOD_LFO_CANONICAL
+    return shapeLfoOutput(envTemp.output);
+#else
     return (envTemp.output);
+#endif
 }
 
 void envelopeGenerator::syncTrackerSeq(uint32_t val, float seqSpeed)

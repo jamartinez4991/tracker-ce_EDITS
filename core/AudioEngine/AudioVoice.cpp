@@ -35,7 +35,16 @@ AudioVoice::AudioVoice()
     {
         connections.push_back(new AudioConnection(&memoryPlayer[channel], &bitDepth[channel]));
         connections.push_back(new AudioConnection(&bitDepth[channel], &filter[channel]));
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+        // Paired stereo: channel index == input/output index of the shared processors.
+        connections.push_back(
+          new AudioConnection(&filter[channel], 0, &sampleRateReduction, channel));
+        connections.push_back(
+          new AudioConnection(&sampleRateReduction, channel, &djFilter, channel));
+        connections.push_back(new AudioConnection(&djFilter, channel, &amplifier[channel], 0));
+#else
         connections.push_back(new AudioConnection(&filter[channel], &amplifier[channel]));
+#endif
         connections.push_back(new AudioConnection(&amplifier[channel], 0, &stereoMirror, channel));
         connections.push_back(
           new AudioConnection(&stereoMirror, channel, &panningAmplifier[channel], 0));

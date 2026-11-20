@@ -51,6 +51,10 @@
 #include "amplifier.h"
 #include "analyze_rms.h"
 #include "effect_bitDepth.h"
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+#include "effect_sampleRateReduction.h"
+#include "filter_dj.h"
+#endif
 #include "effect_dynamics.h"
 #include "effect_limiter.h"
 #include "effect_polyverb.h"

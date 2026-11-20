@@ -3,6 +3,9 @@
 #include "mtWavetableEnvelopes.h"
 #include "fileManager.h"
 #include <stdio.h>
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+#include "effect_sampleRateReduction.h"
+#endif
 
 #include "core/interfacePopups.h"
 #include "polyassert.h"
@@ -677,7 +680,11 @@ void cInstrumentEditor::showEffectScreen()
 {
     showTitleBar();
     showSendScreenFrame();
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+    frameData.placesCount = 7; // slots 0-3 effects, 4 (button only, skipped), 5-6 new effects
+#else
     frameData.placesCount = 4;
+#endif
 
     for (uint8_t i = 0; i < 8; i++)
     {
@@ -711,8 +718,19 @@ void cInstrumentEditor::showEffectScreen()
     display.setControlShow(barControl[2]);
     display.setControlShow(barControl[3]);
     display.setControlHide(filterModeListControl);
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+    display.setControlStyle(barControl[5],
+                            (controlStyleShow | controlStyleValue_0_100 | controlStyleBackground) |
+                              shadow | gradient);
+    display.setControlStyle(barControl[6],
+                            (controlStyleShow | controlStyleValue_0_100 | controlStyleBackground) |
+                              shadow | gradient);
+    display.setControlShow(barControl[5]);
+    display.setControlShow(barControl[6]);
+#else
     display.setControlHide(barControl[5]);
     display.setControlHide(barControl[6]);
+#endif
 
     display.setControlText(label[0], "Overdrive");
     display.setControlText(label[1], "Bit depth");
@@ -721,11 +739,20 @@ void cInstrumentEditor::showEffectScreen()
     display.setControlText(label[4], "Instrument");
     display.setControlText2(label[4], "MIDI Mapping");
 
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+    display.setControlText(label[5], "Sample rate");
+#ifdef MOD_FILTER_RENAME
+    display.setControlText(label[6], "Filter"); // MOD_FILTER_RENAME: label only
+#else
+    display.setControlText(label[6], "DJ filter");
+#endif
+#else
     for (uint8_t i = 5; i < 7; i++)
     {
         display.setControlText(label[i], "");
         display.setControlText2(label[i], "");
     }
+#endif
     display.setControlText(label[7], "Back");
     display.setControlText2(label[7], "");
 
@@ -737,6 +764,10 @@ void cInstrumentEditor::showEffectScreen()
     showParamsReverbSend();
     showParamsOverdrive();
     showParamsBitDepth();
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+    showParamsSampleRate();
+    showParamsDjFilter();
+#endif
 
     display.setRemoveControlStyle(label[1], controlStyleShowBitmap);
     display.setRemoveControlStyle(label[6], controlStyleShowBitmap);
@@ -780,8 +811,13 @@ void cInstrumentEditor::showEffectScreen()
 
 void cInstrumentEditor::showSendScreenFrame()
 {
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+    if (selectedPlaceSends == 4 || selectedPlaceSends > 6)
+        return;
+#else
     if (selectedPlaceSends > 3)
         return;
+#endif
 
     display.setControlValue(frameControl, selectedPlaceSends);
     display.setControlShow(frameControl);
@@ -1422,13 +1458,99 @@ void cInstrumentEditor::showEnvRelease()
     display.refreshControl(barControl[6]);
 }
 
+#ifdef MOD_AMOUNT_SUBPARAMS
+// Draws the Amount column's sub-parameter (Polarity / pitch depth) when one is selected.
+bool cInstrumentEditor::showAmountSub()
+{
+    const uint8_t sub = getAmountSub();
+    const uint8_t col = amountColumn();
+    const uint32_t shadow =
+      (display.getTheme().bottomScreenShadow > 0 ? controlStyleBottomShadow : 0);
+    const uint32_t gradient = (display.getTheme().barShadow > 0 ? controlStyleGradient : 0);
+    const uint32_t kBase = controlStyleShow | controlStyleBackground | shadow | gradient;
+
+    if (sub == kSubAmount)
+    {
+        // plain Amount: restore title; showEnvAmount/showLfoAmount restore bar style and value
+        display.setControlText(label[col], "Amount");
+        display.setControlStyle(barControl[col], kBase | controlStyleValue_0_100);
+        display.setControlShow(barControl[col]);
+        return false;
+    }
+
+    const uint8_t envSlot = automationDestToEnvSlot(selectedEnvelope);
+    (void)envSlot;
+
+    if (sub == kSubPolarity)
+    {
+#ifdef MOD_LFO_POLARITY
+        const bool uni = ((editorInstrument->lfoPolarityMask >> envSlot) & 1) != 0;
+        display.setControlText(label[col], "Polarity");
+        snprintf(labelText[col], sizeof(labelText[col]), "%s", uni ? "Unipolar" : "Bipolar");
+        display.setControlHide(barControl[col]);
+#endif
+    }
+    else
+    {
+#ifdef MOD_PITCH_RANGE
+        const int st = editorInstrument->pitchModSemitones;
+        const int ct = editorInstrument->pitchModCents;
+        const float combined = (st * 100 + ct) / 100.0f; // read-only result of the two controls
+        display.setControlText(label[col], sub == kSubPitchSemitones ? "Pitch st" : "Pitch ct");
+        if (combined == 0.0f)
+            snprintf(labelText[col], sizeof(labelText[col]), "0.00 st");
+        else
+            snprintf(labelText[col], sizeof(labelText[col]), "%+.2f st", (double)combined);
+        display.setControlStyle(
+          barControl[col], kBase | controlStyleValueLeftRight_100_100);
+        display.setControlShow(barControl[col]);
+        display.setControlValue(barControl[col],
+                                sub == kSubPitchSemitones ? (st * 100) / 24 : ct);
+        display.refreshControl(barControl[col]);
+#endif
+    }
+
+    display.setControlText2(label[col], labelText[col]);
+    display.refreshControl(label[col]);
+    return true;
+}
+#endif
+
 void cInstrumentEditor::showEnvAmount()
 {
+#ifdef MOD_AMOUNT_SUBPARAMS
+    if (showAmountSub())
+        return;
+#endif
     const uint8_t envSlot = automationDestToEnvSlot(selectedEnvelope);
+#ifdef MOD_BIPOLAR_MOD_DEPTH
+    {
+        // Same presentation as the signed LFO depth: centred bar, explicit sign, exact zero.
+        // Amp stays unsigned (gain stage) and gets the plain 0..100 bar back.
+        const uint32_t shadow =
+          (display.getTheme().bottomScreenShadow > 0 ? controlStyleBottomShadow : 0);
+        const uint32_t gradient = (display.getTheme().barShadow > 0 ? controlStyleGradient : 0);
+        const bool bipolar = (envSlot != envAmp);
+        display.setControlStyle(barControl[7],
+                                (controlStyleShow |
+                                 (bipolar ? controlStyleValueLeftRight_100_100
+                                          : controlStyleValue_0_100) |
+                                 controlStyleBackground) |
+                                  shadow | gradient);
+        const float pct = editorInstrument->envelope[envSlot].amount * 100.0f;
+        if (!bipolar)
+            snprintf(labelText[7], sizeof(labelText[7]), "%.0f", (double)pct);
+        else if (pct == 0.0f)
+            snprintf(labelText[7], sizeof(labelText[7]), "0");
+        else
+            snprintf(labelText[7], sizeof(labelText[7]), "%+.0f", (double)pct);
+    }
+#else
     snprintf(labelText[7],
              sizeof(labelText[7]),
              "%.0f",
              (float)(editorInstrument->envelope[envSlot].amount * 100));
+#endif
 
     if (editorInstrument->isAutomationDestEnabled(selectedEnvelope))
     {
@@ -1490,12 +1612,45 @@ void cInstrumentEditor::showLfoSpeed()
 }
 void cInstrumentEditor::showLfoAmount()
 {
+#ifdef MOD_AMOUNT_SUBPARAMS
+    if (showAmountSub())
+        return;
+#endif
     const uint8_t envSlot = automationDestToEnvSlot(selectedEnvelope);
     uint8_t col = (editorInstrument->envelope[envSlot].loop == 3) ? 7 : 5;
+#ifdef MOD_LFO_SIGNED_DEPTH
+    if (envSlot != envAmp)
+    {
+        // centred signed bar (-100 .. 0 .. +100) with an explicit sign, like the wavetable warp bars
+        const uint32_t shadow =
+          (display.getTheme().bottomScreenShadow > 0 ? controlStyleBottomShadow : 0);
+        const uint32_t gradient = (display.getTheme().barShadow > 0 ? controlStyleGradient : 0);
+        display.setControlStyle(
+          barControl[col],
+          (controlStyleShow | controlStyleValueLeftRight_100_100 | controlStyleBackground) | shadow |
+            gradient);
+        const float pct = editorInstrument->lfo[envSlot].amount * 100.0f;
+        if (pct == 0.0f)
+            snprintf(labelText[col], sizeof(labelText[col]), "0");
+        else
+            snprintf(labelText[col], sizeof(labelText[col]), "%+.0f", (double)pct);
+    }
+    else
+#endif
+    {
+#ifdef MOD_BIPOLAR_MOD_DEPTH
+        // Amp LFO is unsigned: undo the centred style a previous signed Amount left on this bar.
+        display.setControlStyle(
+          barControl[col],
+          (controlStyleShow | controlStyleValue_0_100 | controlStyleBackground) |
+            (display.getTheme().bottomScreenShadow > 0 ? controlStyleBottomShadow : 0) |
+            (display.getTheme().barShadow > 0 ? controlStyleGradient : 0));
+#endif
     snprintf(labelText[col],
              sizeof(labelText[col]),
              "%.0f",
              (float)(editorInstrument->lfo[envSlot].amount * 100));
+    }
     display.setControlText2(label[col], labelText[col]);
     display.refreshControl(label[col]);
 
@@ -1745,6 +1900,46 @@ void cInstrumentEditor::showParamsBitDepth()
     display.setControlValue(barControl[1], barDisplayedBitDepth);
     display.refreshControl(barControl[1]);
 }
+
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+void cInstrumentEditor::showParamsSampleRate()
+{
+    const uint8_t v = editorInstrument->sampleRateReduction;
+    if (v == 0)
+    {
+        sprintf(labelText[5], "Off");
+    }
+    else
+    {
+        const int hz = (int)(AudioSampleRateReduction::effectiveRateHz(v) + 0.5f);
+        if (hz >= 10000)
+            sprintf(labelText[5], "%d.%dk", hz / 1000, (hz % 1000) / 100);
+        else
+            sprintf(labelText[5], "%d Hz", hz);
+    }
+    display.setControlText2(label[5], labelText[5]);
+    display.refreshControl(label[5]);
+
+    display.setControlValue(barControl[5], (int)v * 100 / 255);
+    display.refreshControl(barControl[5]);
+}
+
+void cInstrumentEditor::showParamsDjFilter()
+{
+    const int8_t v = editorInstrument->djFilter;
+    if (v == 0)
+        sprintf(labelText[6], "Off");
+    else if (v < 0)
+        sprintf(labelText[6], "LP %d", -(int)v);
+    else
+        sprintf(labelText[6], "HP %d", (int)v);
+    display.setControlText2(label[6], labelText[6]);
+    display.refreshControl(label[6]);
+
+    display.setControlValue(barControl[6], ((int)v + 100) / 2);
+    display.refreshControl(barControl[6]);
+}
+#endif
 
 void cInstrumentEditor::refreshFramePosition()
 {

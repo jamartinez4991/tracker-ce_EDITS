@@ -34,6 +34,17 @@
 
 class Timer;
 
+#ifdef MOD_PITCH_RANGE
+// MOD_PITCH_RANGE: glide clamps in the playback loops compare against the note table ends scaled by
+// these members, so an active pitch modulation (applied as a ratio on top of the base pitch) is not
+// truncated to the note table range. Without the flag these expand to the original expressions.
+#define PM_PITCH_HI(tbl) ((tbl)[MAX_NOTE - 1] * pitchBoundHiScale)
+#define PM_PITCH_LO(tbl) ((tbl)[MIN_NOTE] * pitchBoundLoScale)
+#else
+#define PM_PITCH_HI(tbl) ((tbl)[MAX_NOTE - 1])
+#define PM_PITCH_LO(tbl) ((tbl)[MIN_NOTE])
+#endif
+
 class AudioPlayMemory : public AudioStream
 {
   public:
@@ -110,6 +121,10 @@ class AudioPlayMemory : public AudioStream
     void setGlide(uint16_t value, int8_t currentNote, uint8_t instr_idx);
     void setFineTune(int8_t value, int8_t currentNote);
     void setTune(int8_t value, int8_t currentNote);
+#ifdef MOD_PITCH_RANGE
+    // Pitch modulation in cents (float, not quantised). Independent of pitchControl / fine-tune.
+    void setPitchModulationCents(float cents);
+#endif
     //*********
     //*****Granular
     void setGranularGrainLength();
@@ -127,6 +142,9 @@ class AudioPlayMemory : public AudioStream
     //************Reverse
     void setReverse();
     void clearReverse();
+#ifdef MOD_LAZY_CHOP
+    bool isReverse() const { return reverseDirectionFlag != 0; } // read-only (Lazy Chop)
+#endif
     //*********
     //************Pitch
     // Tune
@@ -435,6 +453,15 @@ class AudioPlayMemory : public AudioStream
                                  // kolejną(lub poprzednią)
     int8_t currentTune;
     int8_t currentFineTune;
+#ifdef MOD_PITCH_RANGE
+    static constexpr float kPitchModMaxCents = 2500.0f; // +-25 semitones (24 st + 100 cents)
+    static constexpr float kPitchEffHiScale = 4.0f;     // effective pitch limit above note table
+    static constexpr float kPitchEffLoScale = 0.25f;    // effective pitch limit below note table
+    float pitchModulationRatio = 1.0f; // 2^(cents/1200), cached; 1.0 = no modulation
+    bool pitchModActive = false;
+    float pitchBoundHiScale = 1.0f;
+    float pitchBoundLoScale = 1.0f;
+#endif
     //********
     //********** Wavetable
     uint16_t wavetableWindowSize;

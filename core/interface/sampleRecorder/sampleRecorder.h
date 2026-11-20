@@ -29,6 +29,23 @@ const char monitorNamesLabels[monitorCount][5] = {
 
 constexpr uint8_t undoCount = 5;
 
+// MOD_MONO_SAMPLING (see features/mono-sampling): runtime Stereo/Mono recording format.
+// Tracker+ / Mini only; the original Tracker is already mono-only.
+#if defined(MOD_MONO_SAMPLING) && defined(PLATFORM_IMX)
+#define MOD_MONO_SAMPLING_ACTIVE 1
+#endif
+
+// MOD_RECORDER_FORMAT (see features/recorder-format): makes the Format value visible under its
+// caption (two-line label) and shows the effective format. Requires MOD_MONO_SAMPLING.
+#ifdef MOD_RECORDER_FORMAT
+#ifndef MOD_MONO_SAMPLING
+#error "MOD_RECORDER_FORMAT requires MOD_MONO_SAMPLING"
+#endif
+#ifdef MOD_MONO_SAMPLING_ACTIVE
+#define MOD_RECORDER_FORMAT_ACTIVE 1
+#endif
+#endif
+
 struct strRecorderConfig
 {
     uint8_t source;
@@ -39,6 +56,11 @@ struct strRecorderConfig
     uint8_t gainUsb;
     uint8_t monitor;
     float radioFreq = 87.5;
+#ifdef MOD_MONO_SAMPLING_ACTIVE
+    // Runtime-only. false = Stereo (default), true = Mono. Never serialized; reset in
+    // cProjectEditor::loadProjectValues().
+    bool recordMono = false;
+#endif
 };
 
 const strRecorderConfig defaultRecorderConfig = { .source = 0,
@@ -288,6 +310,19 @@ class cSampleRecorder : public ModuleBase
         MONITOR_COL = 6,
 #endif
     };
+#ifdef MOD_MONO_SAMPLING_ACTIVE
+    // The Format control lives on the Level column's bottom button. The level meter above it is
+    // unchanged; only the label beneath it ("Level") becomes "Format / Stereo|Mono". That column is
+    // never used by Radio, so the control is reachable for every source.
+    static constexpr uint8_t FORMAT_COL = LEVEL_COL;
+    bool isFormatSelected() const
+    {
+        return currentScreen == screenTypeConfig && selectedPlace == FORMAT_COL;
+    }
+    void showFormat();
+    void changeFormatSelection(int16_t value);
+    void setDefaultFormat();
+#endif
     void setCurrentScreenType(screenType screenType);
     void refreshOutputSource();
     strFrameData frameData;

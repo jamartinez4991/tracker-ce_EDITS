@@ -290,6 +290,9 @@ class playerEngine
     void modPitch(float value);
     void modGlide(uint16_t value);
     void modFineTune(int8_t value);
+#ifdef MOD_PITCH_RANGE
+    void modPitchModulation(float cents);
+#endif
 
     void modPanning(int16_t value);
     void modVolume(float value);
@@ -300,6 +303,10 @@ class playerEngine
     void modResonance(float value);
     void modOverdrive(uint8_t value);
     void modBitDepth(uint8_t value);
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+    void modSampleRateReduction(uint8_t value);
+    void modDjFilter(int8_t value);
+#endif
 
     void modSeqPoints(uint32_t sp, uint32_t ep, uint8_t fx_n);
 
@@ -330,6 +337,11 @@ class playerEngine
     uint32_t getEnvelopeWtPosMod();
 
     uint16_t getWavePosition();
+#ifdef MOD_LAZY_CHOP
+    // Per-voice, read-only queries used by Lazy Chop (never call getWavePosition() unless playing).
+    bool isSamplePlaying();
+    bool isSampleReversed();
+#endif
     int16_t* getWaveStartAddressIfPlaying(int channel);
     uint32_t getLengthIfPlaying();
     void update();
@@ -589,6 +601,13 @@ class playerEngine
     std::vector<AudioAmplifier*> ampPtr;
     std::vector<AudioFilterStateVariable*> filterPtr;
     std::vector<AudioBitDepth*> bitDepthPtr;
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+    AudioSampleRateReduction* sampleRateReductionPtr = nullptr; // one per voice (paired on i.MX)
+    AudioFilterDJ* djFilterPtr = nullptr;
+    inline void handleUpdateRefreshSampleRateReduction();
+    inline void handleUpdateRefreshDjFilter();
+    void handleNoteOnInstrumentFx();
+#endif
     std::vector<AudioAnalyzeRMS*> rmsPtr;
 
     envelopeGenerator* envelopePtr[envMax];

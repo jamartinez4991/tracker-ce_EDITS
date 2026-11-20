@@ -1722,12 +1722,56 @@ void VoiceStreamManager::setSuspended(bool suspended)
     }
 }
 
+#ifdef MOD_LAZY_CHOP
+void VoiceStreamManager::requestInstrumentSliceCacheRefresh(int instrIdx)
+{
+    if (instrIdx < 0 || instrIdx >= kMaxInstruments)
+        return;
+    pendingSliceCacheRefresh |= (1ULL << instrIdx);
+}
+
+void VoiceStreamManager::servicePendingSliceCacheRefresh()
+{
+    if (pendingSliceCacheRefresh == 0)
+        return;
+
+    // Conservative: no outstanding async job at all (it may target a shared ring buffer) and no
+    // asynchronous SD read in flight.
+    if (currentJob.inProgress || fs->isAsyncReadBusy())
+        return;
+
+    for (int instr = 0; instr < kMaxInstruments; instr++)
+    {
+        if (!(pendingSliceCacheRefresh & (1ULL << instr)))
+            continue;
+
+        bool inUse = false;
+        for (int v = 0; v < kVoiceCount; v++)
+        {
+            if (voices[v].active && voices[v].instrIdx == instr)
+            {
+                inUse = true;
+                break;
+            }
+        }
+        if (inUse)
+            continue;
+
+        pendingSliceCacheRefresh &= ~(1ULL << instr);
+        refreshInstrumentSliceCache(instr);
+    }
+}
+#endif
+
 void VoiceStreamManager::update()
 {
     if (fs == nullptr || isSuspended)
     {
         return;
     }
+#ifdef MOD_LAZY_CHOP
+    servicePendingSliceCacheRefresh();
+#endif
 
     if (currentJob.inProgress)
     {
