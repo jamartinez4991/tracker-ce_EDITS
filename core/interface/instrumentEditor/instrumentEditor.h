@@ -239,6 +239,10 @@ class cInstrumentEditor : public ModuleBase
     void showParamsReverbSend();
     void showParamsOverdrive();
     void showParamsBitDepth();
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+    void showParamsSampleRate();
+    void showParamsDjFilter();
+#endif
 
     static void changeParamsVolume(int16_t value);
     static void changeParamsPanning(int16_t value);
@@ -251,6 +255,10 @@ class cInstrumentEditor : public ModuleBase
     static void changeParamsReverbSend(int16_t value);
     static void changeParamsOverdrive(int16_t value);
     static void changeParamsBitDepth(int16_t value);
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+    static void changeParamsSampleRate(int16_t value);
+    static void changeParamsDjFilter(int16_t value);
+#endif
 
     void setDefaultVolume();
     void setDefaultPanning();
@@ -263,6 +271,10 @@ class cInstrumentEditor : public ModuleBase
     void setDefaultReverbSend();
     void setDefaultOverdrive();
     void setDefaultBitDepth();
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+    void setDefaultSampleRate();
+    void setDefaultDjFilter();
+#endif
 
     //----------------------------------
     // envelopes lists

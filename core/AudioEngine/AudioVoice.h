@@ -51,11 +51,21 @@ class AudioVoice
     AudioAmplifier* getPanningAmplifier(VoiceChannels channel);
     AudioAnalyzeRMS* getRMS(VoiceChannels channel);
     envelopeGenerator* getEnvelopeGenerator(EnvelopeGeneratorType type);
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+    // One processor per voice with paired L/R channels (index 0 = left, 1 = right).
+    AudioSampleRateReduction* getSampleRateReduction() { return &sampleRateReduction; }
+    AudioFilterDJ* getDjFilter() { return &djFilter; }
+#endif
 
   private:
     AudioPlayMemory memoryPlayer[VoiceChannels::kChannelsCount];
     AudioBitDepth bitDepth[VoiceChannels::kChannelsCount];
     AudioFilterStateVariable filter[VoiceChannels::kChannelsCount];
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+    // Declared (= constructed = updated) in signal order: filter -> SRR -> DJ -> amplifier.
+    AudioSampleRateReduction sampleRateReduction{ VoiceChannels::kChannelsCount };
+    AudioFilterDJ djFilter{ VoiceChannels::kChannelsCount };
+#endif
     AudioAmplifier amplifier[VoiceChannels::kChannelsCount];
     AudioStereoMirror stereoMirror;
     AudioAmplifier panningAmplifier[VoiceChannels::kChannelsCount];

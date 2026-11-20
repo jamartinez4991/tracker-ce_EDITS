@@ -41,7 +41,22 @@ const char firmwareVersionLabelFormat[] = "%d.%d.%d " FW_EDITION_NAME;
 const char firmwareVersionLabelFormatBeta[] = "%d.%d.%d " FW_EDITION_NAME " beta %d";
 
 const uint8_t PROJECT_FILE_VERSION = 17;   // wersja struktury pliku projektu
+// ---- opt-in mod flag derivations (identical block in every mod that extends strInstrument) ----
+#if defined(MOD_SAMPLE_INSTRUMENT_FX) || defined(MOD_PITCH_RANGE) || defined(MOD_LFO_POLARITY)
+#define MOD_INSTRUMENT_EXT
+#endif
+// Editor: Amount column hosts extra sub-parameters (LFO polarity, pitch semitone/cent depth).
+// LFO output is produced in a canonical [-1,+1] form (amount applied afterwards) when signed depth
+// and/or polarity is enabled.
+#ifdef MOD_INSTRUMENT_EXT
+// Shared by the struct-extending mods (see features/CROSS_FEATURE.md): one fixed 8-byte block is
+// appended to strInstrument whenever ANY of them is enabled -> file version 10. Because the block
+// layout does not depend on which mods are on, files are interchangeable between mod builds.
+// NOTE: files saved with these mods are not readable by stock firmware.
+const uint8_t INSTRUMENT_FILE_VERSION = 10;
+#else
 const uint8_t INSTRUMENT_FILE_VERSION = 9; // wersja struktury pliku instrumentu
+#endif
 const uint8_t PATTERN_FILE_VERSION = 6;
 
 const uint8_t CONFIG_STRUCT_VER = 10;
@@ -247,6 +262,10 @@ constexpr uint32_t LFO_FINETUNE_SEND_MASK = 0b00000000000010000000000000000000;
 constexpr uint32_t REVERB_SEND_MASK = 0b00000000000100000000000000000000;
 constexpr uint32_t OVERDRIVE_MASK = 0b00000000001000000000000000000000;
 constexpr uint32_t BIT_DEPTH_MASK = 0b00000000010000000000000000000000;
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+constexpr uint32_t SAMPLE_RATE_REDUCTION_MASK = 0b00000000100000000000000000000000;
+constexpr uint32_t DJ_FILTER_MASK = 0b00000001000000000000000000000000;
+#endif
 
 const uint8_t MIN_NOTE_OFFSET = 0;
 const uint8_t MAX_NOTE_OFFSET = 13;
@@ -675,6 +694,15 @@ struct strInstrument
     uint8_t overdrive;
     uint8_t bitDepth; // = BIT_DEPTH_MAX;
     int8_t tuneResample;
+#ifdef MOD_INSTRUMENT_EXT
+    // Shared mod extension block (file format v10), fixed layout. Neutral/legacy values below.
+    uint8_t sampleRateReduction; // MOD_SAMPLE_INSTRUMENT_FX: 0 = off .. 255
+    int8_t djFilter;             // MOD_SAMPLE_INSTRUMENT_FX: -100 .. 0 (off) .. +100
+    int8_t pitchModSemitones;    // MOD_PITCH_RANGE: -24 .. +24 (additive with cents)
+    int8_t pitchModCents;        // MOD_PITCH_RANGE: -100 .. +100; default +100 = legacy +-1 st
+    uint8_t lfoPolarityMask;     // MOD_LFO_POLARITY: bit n = LFO of envelope slot n unipolar
+    uint8_t modExtReserved[3];   // reserved, keep zero
+#endif
 
     // Bitmasks for envelope[envWtPos / envGranLen].enable so legacy .pti files (which only ever
     // set bit 0 = 0x01 for Wavetable Position) never unintendedly enable Granular Length automation.
@@ -731,7 +759,12 @@ struct strInstrument
         }
     }
 };
+#ifdef MOD_INSTRUMENT_EXT
+static_assert(sizeof(strInstrument) == 380,
+              "strInstrument with the mod extension block must be 380 bytes (372 + 8)");
+#else
 static_assert(sizeof(strInstrument) == 372, "strInstrument size must remain 372 bytes");
+#endif
 
 //----------------------------------------------------------------------------------
 const strInstrument defaultInstrumentParams = {
@@ -775,6 +808,14 @@ const strInstrument defaultInstrumentParams = {
     .overdrive = 0,
     .bitDepth = 16,
     .tuneResample = 0,
+#ifdef MOD_INSTRUMENT_EXT
+    .sampleRateReduction = 0,
+    .djFilter = 0,
+    .pitchModSemitones = 0,
+    .pitchModCents = 100,
+    .lfoPolarityMask = 0,
+    .modExtReserved = { 0, 0, 0 },
+#endif
 };
 
 //----------------------------------------------------------------------------------

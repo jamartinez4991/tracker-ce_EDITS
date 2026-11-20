@@ -59,6 +59,10 @@ AUDIO_CORE_RAM void playerEngine::update()
         handleUpdateRefreshReverb();
         handleUpdateRefreshOverdrive();
         handleUpdateRefreshBitDepth();
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+        handleUpdateRefreshSampleRateReduction();
+        handleUpdateRefreshDjFilter();
+#endif
         handleUpdateRefreshGranLen();
         handleUpdateRefreshGranWave();
         handleUpdateRefreshGranLoop();
@@ -538,6 +542,27 @@ inline void playerEngine::handleUpdateRefreshBitDepth()
         modBitDepth(bitDepth);
     }
 }
+
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+// Static instrument parameters: no performance-mode / sequencer-modulation override paths.
+inline void playerEngine::handleUpdateRefreshSampleRateReduction()
+{
+    if (refreshRegister & SAMPLE_RATE_REDUCTION_MASK)
+    {
+        refreshRegister &= (~SAMPLE_RATE_REDUCTION_MASK);
+        modSampleRateReduction(mtProject.instrument[currentInstrument_idx].sampleRateReduction);
+    }
+}
+
+inline void playerEngine::handleUpdateRefreshDjFilter()
+{
+    if (refreshRegister & DJ_FILTER_MASK)
+    {
+        refreshRegister &= (~DJ_FILTER_MASK);
+        modDjFilter(mtProject.instrument[currentInstrument_idx].djFilter);
+    }
+}
+#endif
 
 inline void playerEngine::handleUpdateRefreshWtPos()
 {

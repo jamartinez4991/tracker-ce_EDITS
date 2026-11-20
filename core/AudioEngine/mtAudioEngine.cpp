@@ -345,27 +345,29 @@ void audioEngine::connectVoiceToMixer(AudioVoice* voice, MixerAndFxs<kVoices>* m
                           mixerAndFxs->getTracksMixer(MixerAndFxChannelType::kRight),
                           idx));
 
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+    // Send taps come from the DJ filter's paired outputs (0 = L, 1 = R), i.e. after both new effects.
+#define SEND_TAP_L (voice->getDjFilter()), 0
+#define SEND_TAP_R (voice->getDjFilter()), 1
+#else
+#define SEND_TAP_L (voice->getFilter(AudioVoice::VoiceChannels::kLeft)), 0
+#define SEND_TAP_R (voice->getFilter(AudioVoice::VoiceChannels::kRight)), 0
+#endif
+    connections.push_back(new AudioConnection(
+      SEND_TAP_L, mixerAndFxs->getPreFxMixer(MixerAndFxs<kVoices>::FxType::kReverb), idx));
     connections.push_back(
-      new AudioConnection(voice->getFilter(AudioVoice::VoiceChannels::kLeft),
-                          0,
-                          mixerAndFxs->getPreFxMixer(MixerAndFxs<kVoices>::FxType::kReverb),
-                          idx));
-    connections.push_back(
-      new AudioConnection(voice->getFilter(AudioVoice::VoiceChannels::kRight),
-                          0,
+      new AudioConnection(SEND_TAP_R,
                           mixerAndFxs->getPreFxMixer(MixerAndFxs<kVoices>::FxType::kReverb),
                           kVoices + kInputsChannels + idx));
 
+    connections.push_back(new AudioConnection(
+      SEND_TAP_L, mixerAndFxs->getPreFxMixer(MixerAndFxs<kVoices>::FxType::kDelay), idx));
     connections.push_back(
-      new AudioConnection(voice->getFilter(AudioVoice::VoiceChannels::kLeft),
-                          0,
-                          mixerAndFxs->getPreFxMixer(MixerAndFxs<kVoices>::FxType::kDelay),
-                          idx));
-    connections.push_back(
-      new AudioConnection(voice->getFilter(AudioVoice::VoiceChannels::kRight),
-                          0,
+      new AudioConnection(SEND_TAP_R,
                           mixerAndFxs->getPreFxMixer(MixerAndFxs<kVoices>::FxType::kDelay),
                           kVoices + kInputsChannels + idx));
+#undef SEND_TAP_L
+#undef SEND_TAP_R
 }
 
 void audioEngine::connectInputToMixer(AudioInput* input, MixerAndFxs<kVoices>* mixerAndFxs)
@@ -1615,6 +1617,10 @@ playerEngine::playerEngine()
     // umieszczone w tablicy(instrumentPlayer) na tej podstawie jest wyznaczany index(nChannel)
     nChannel = ((uint32_t)this - (uint32_t)instrumentPlayer) / sizeof(playerEngine);
 
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+    sampleRateReductionPtr = audioVoice.getSampleRateReduction();
+    djFilterPtr = audioVoice.getDjFilter();
+#endif
     for (int channel = 0; channel < AudioVoice::VoiceChannels::kChannelsCount; channel++)
     {
         playMemPtr.push_back(audioVoice.getMemoryPlayer((AudioVoice::VoiceChannels)channel));
@@ -1749,6 +1755,18 @@ AUDIO_CORE_RAM void playerEngine ::modBitDepth(uint8_t value)
         bitDepthPtr[channel]->setBitDepth(value);
     }
 }
+
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+AUDIO_CORE_RAM void playerEngine ::modSampleRateReduction(uint8_t value)
+{
+    sampleRateReductionPtr->setReduction(value);
+}
+
+AUDIO_CORE_RAM void playerEngine ::modDjFilter(int8_t value)
+{
+    djFilterPtr->setValue(value);
+}
+#endif
 
 AUDIO_CORE_RAM void playerEngine ::modWavetableWindow(uint16_t value)
 {
@@ -2083,6 +2101,10 @@ uint8_t playerEngine ::noteOnWithoutInstrument(std::vector<int16_t*> addr,
     modDelaySend(AMP_MUTED);
     modReverbSend(AMP_MUTED);
     modBitDepth(BIT_DEPTH_MAX);
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+    modSampleRateReduction(0);
+    modDjFilter(0);
+#endif
     modOverdrive(OVERDRIVE_DISABLED);
 
     engine.setLimiterAttack(300);

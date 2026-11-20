@@ -34,6 +34,9 @@ static void recoveryInstrumentVersion5();
 static void recoveryInstrumentVersion6();
 static void recoveryInstrumentVersion7();
 static void recoveryInstrumentVersion8();
+#ifdef MOD_INSTRUMENT_EXT
+static void recoveryInstrumentVersion9();
+#endif
 
 mtVersionRecovery versionRecovery;
 
@@ -68,6 +71,9 @@ mtVersionRecovery::mtVersionRecovery()
     recoveryInstrumentFunction[5] = recoveryInstrumentVersion6;
     recoveryInstrumentFunction[6] = recoveryInstrumentVersion7;
     recoveryInstrumentFunction[7] = recoveryInstrumentVersion8;
+#ifdef MOD_INSTRUMENT_EXT
+    recoveryInstrumentFunction[8] = recoveryInstrumentVersion9;
+#endif
 }
 // zwraca wskaznik do aktywnego odczytanego projektu
 strMtProjectRemote* mtVersionRecovery::getReadedProject()
@@ -473,3 +479,21 @@ static void recoveryInstrumentVersion8()
       volumeConverter.convertInstrumentVolumeVersion1300to1302(
         receivedInstrument->instrumentDataAndHeader.instrument.volume);
 }
+
+#ifdef MOD_INSTRUMENT_EXT
+// v9 -> v10: the shared mod extension block was appended. Set legacy/neutral values explicitly
+// (do not rely on the loader's zero-fill alone): pitchModCents = 100 keeps the stock +-1 semitone
+// pitch modulation depth, polarity mask 0 = every LFO Bipolar.
+static void recoveryInstrumentVersion9()
+{
+    strInstrumentFile* receivedInstrument = versionRecovery.getReadedInstrument();
+    strInstrument& instr = receivedInstrument->instrumentDataAndHeader.instrument;
+
+    instr.sampleRateReduction = 0;
+    instr.djFilter = 0;
+    instr.pitchModSemitones = 0;
+    instr.pitchModCents = 100;
+    instr.lfoPolarityMask = 0;
+    instr.modExtReserved[0] = instr.modExtReserved[1] = instr.modExtReserved[2] = 0;
+}
+#endif

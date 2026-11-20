@@ -929,6 +929,13 @@ void cFileManager::setDefaultActiveInstrument(struct strInstrument* targetInstru
     targetInstrument->overdrive = 0;
     targetInstrument->bitDepth = 16;
     targetInstrument->tuneResample = 0;
+#ifdef MOD_INSTRUMENT_EXT
+    targetInstrument->sampleRateReduction = 0;
+    targetInstrument->djFilter = 0;
+    targetInstrument->pitchModSemitones = 0;
+    targetInstrument->pitchModCents = 100; // legacy +-1 semitone pitch modulation depth
+    targetInstrument->lfoPolarityMask = 0; // all LFOs Bipolar
+#endif
 
     targetInstrument->granular.grainLength = 441;
 
