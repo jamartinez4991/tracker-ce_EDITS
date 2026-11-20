@@ -457,6 +457,13 @@ class Sequencer
             bool noteOpen = 0;
             uint8_t recOpen = 0;
             uint8_t recNoteOnStepIdx = 0;
+#ifdef MOD_LIVE_REC_TOGGLES
+            // Captured when this track's live-recording lifecycle starts (see
+            // features/live-recording-toggles). Only meaningful while recOpen != 0; never read
+            // from the global toggles once captured.
+            bool recCapMicrotiming = true;
+            bool recCapNoteOff = true;
+#endif
 
             int16_t noteSource = -1;
 
@@ -946,6 +953,14 @@ class Sequencer
         player.preRollMetronomeEndCalback = preRollMetronomeEndCalback;
     };
 
+#ifdef MOD_LIVE_REC_TOGGLES
+    // Pattern Editor controls. Changing these never affects a note that is already being recorded.
+    bool getLiveRecNoteOffDetection() const { return liveRecNoteOffDetection; }
+    void setLiveRecNoteOffDetection(bool on) { liveRecNoteOffDetection = on; }
+    bool getLiveRecMicrotiming();
+    void setLiveRecMicrotiming(bool on) { liveRecMicrotimingOverride = on ? 1 : 0; }
+#endif
+
   private:
     static constexpr int kTicksInStep = 576;
     static constexpr size_t kExternalTempoCounterSize = 24 * 2;
@@ -1024,7 +1039,33 @@ class Sequencer
 
     uint8_t recMicrotiming();
     uint8_t recVelocity();
+#ifdef MOD_LIVE_REC_TOGGLES
+    // Global runtime options for *new* live recordings (RAM only, not saved).
+    // Microtiming follows the config's recOptions until the user overrides it.
+    int8_t liveRecMicrotimingOverride = -1; // -1 = follow recOptions, 0 = OFF, 1 = ON
+    bool liveRecNoteOffDetection = true;
+#endif
     uint8_t getDestRecordingStep(uint8_t track, bool quantize, bool noteOff = false);
+    // Settings an *active* recording on this track must use (captured at its start). Without the
+    // mod these are exactly the stock behaviour.
+    bool recMicroFor(uint8_t track)
+    {
+#ifdef MOD_LIVE_REC_TOGGLES
+        return player.track[track].recCapMicrotiming;
+#else
+        (void)track;
+        return recMicrotiming();
+#endif
+    }
+    bool recNoteOffFor(uint8_t track)
+    {
+#ifdef MOD_LIVE_REC_TOGGLES
+        return player.track[track].recCapNoteOff;
+#else
+        (void)track;
+        return true;
+#endif
+    }
 
     uint8_t getNextArpNote(strPlayer::strPlayerTrack* playerRow);
 

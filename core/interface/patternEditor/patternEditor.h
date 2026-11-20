@@ -7,6 +7,11 @@
 #include "mtKeyboardManager.h"
 #include "mtSequencer.h"
 
+// Page 3 keeps the multiplier / recording toggles only while Page 4 does not exist
+#if defined(MOD_LIVE_REC_TOGGLES) && !defined(MOD_ACTION_PAGE4)
+#define MOD_P3_TOGGLES
+#endif
+
 uint8_t isMultiSelection();
 uint8_t isMultiSelectionOnOneLine();
 int16_t getActualStep();
