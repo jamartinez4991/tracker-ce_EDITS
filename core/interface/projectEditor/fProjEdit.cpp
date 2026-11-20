@@ -404,6 +404,10 @@ uint8_t cProjectEditor::loadProjectValues()
     sampleRecorder.recorderConfig.gainRadio = mtProject.values.gainRadio;
     sampleRecorder.recorderConfig.monitor = mtProject.values.monitor;
     sampleRecorder.recorderConfig.radioFreq = mtProject.values.radioFreq;
+#ifdef MOD_MONO_SAMPLING_ACTIVE
+    // Runtime-only preference: every project load / new project returns to Stereo.
+    sampleRecorder.recorderConfig.recordMono = false;
+#endif
     sampleRecorder.recorderConfig.source =
       mtProject.values.source >= sourceCount ? 0 : mtProject.values.source;
 

@@ -72,6 +72,9 @@ static void functActionGain();
 static void functActionMonitor();
 static void functActionRecord();
 static void functActionRadioFreq();
+#ifdef MOD_MONO_SAMPLING_ACTIVE
+static void functActionFormat();
+#endif
 static void functActionRadioLeft();
 static void functActionRadioRight();
 static void functActionGoToMetronomeConfig();
@@ -517,6 +520,9 @@ void cSampleRecorder::setConfigScreenFunct()
     ip->setButtonObj(interfaceButton0 + RADIO_COL2, buttonPress, functActionRadioLeft);
     ip->setButtonObj(interfaceButton0 + RADIO_COL3, buttonPress, functActionRadioRight);
     // ip->setButtonObj(interfaceButton4, buttonPress, functActionButton4);
+#ifdef MOD_MONO_SAMPLING_ACTIVE
+    ip->setButtonObj(interfaceButton0 + FORMAT_COL, buttonPress, functActionFormat);
+#endif
     ip->setButtonObj(interfaceButton0 + GAIN_COL, buttonPress, functActionGain);
     ip->setButtonObj(interfaceButton0 + MONITOR_COL, buttonPress, functActionMonitor);
     ip->setButtonObj(interfaceButton7, buttonPress, functActionButton7);
@@ -1434,6 +1440,9 @@ static void functDeleteBackspace(uint8_t state)
                 {
                     case 0: SR->setDefaultSource(); break;
                     case SR->RADIO_COL1: SR->setDefaultRadioFreq(); break;
+#ifdef MOD_MONO_SAMPLING_ACTIVE
+                    case SR->FORMAT_COL: SR->setDefaultFormat(); break;
+#endif
                     case SR->GAIN_COL: SR->setDefaultGain(); break;
                     case SR->MONITOR_COL: SR->setDefaultMonitorEnable(); break;
                     default: break;
@@ -1514,6 +1523,21 @@ static void functPads(uint8_t pad, uint8_t state, int16_t velo)
     }
 }
 
+#ifdef MOD_MONO_SAMPLING_ACTIVE
+static void functActionFormat()
+{
+    // Same interaction as the Monitor selector: pressing an already-selected list advances it.
+    if (SR->currentScreen == cSampleRecorder::screenTypeConfig &&
+        SR->selectedPlace == SR->FORMAT_COL)
+    {
+        SR->changeFormatSelection(SR->recorderConfig.recordMono ? -1 : 1);
+    }
+
+    SR->selectedPlace = SR->FORMAT_COL;
+    SR->activateLabelsBorder();
+}
+#endif
+
 static void functActionGain()
 {
     SR->selectedPlace = SR->GAIN_COL;
@@ -1547,7 +1571,13 @@ static void functActionRecord()
 
     if (SR->isStereoSource())
     {
+#ifdef MOD_MONO_SAMPLING_ACTIVE
+        // Stereo-capable source: keep both source channels so Recorder::update() averages L+R
+        // into the single destination channel when Mono is selected.
+        config.destinationChannels = SR->recorderConfig.recordMono ? 1 : 2;
+#else
         config.destinationChannels = 2;
+#endif
         config.sourceChannels = 2;
     }
     else if (SR->recorderConfig.source == cSampleRecorder::sourceTypeUsbMix ||
@@ -1994,6 +2024,11 @@ static void functEncoder(int16_t value)
             case SR->RADIO_COL1: SR->changeRadioFreqBar(value); break;
             case SR->RADIO_COL2: break;
             case SR->RADIO_COL3: break;
+#ifdef MOD_MONO_SAMPLING_ACTIVE
+            case SR->FORMAT_COL:
+                SR->changeFormatSelection(interfaceGlobals.invertValForList ? -value : value);
+                break;
+#endif
             case SR->GAIN_COL: SR->changeGainBar(value); break;
             case SR->MONITOR_COL:
             {
@@ -2069,6 +2104,13 @@ static void functLeft()
             case SR->LEVEL_COL:
             case SR->GAIN_COL:
             {
+#ifdef MOD_MONO_SAMPLING_ACTIVE
+                if (SR->selectedPlace == SR->GAIN_COL)
+                {
+                    SR->selectedPlace = SR->FORMAT_COL; // Format sits between Source/Radio and Gain
+                    break;
+                }
+#endif
                 if (SR->recorderConfig.source == cSampleRecorder::sourceTypeRadio)
                     SR->selectedPlace = SR->RADIO_COL1;
                 else
@@ -2137,8 +2179,13 @@ static void functRight()
             {
                 if (SR->recorderConfig.source == cSampleRecorder::sourceTypeRadio)
                     SR->selectedPlace = SR->RADIO_COL1;
+#ifdef MOD_MONO_SAMPLING_ACTIVE
+                else
+                    SR->selectedPlace = SR->FORMAT_COL;
+#else
                 else
                     SR->selectedPlace = SR->GAIN_COL;
+#endif
                 break;
             }
             case SR->GAIN_COL:
@@ -2149,10 +2196,17 @@ static void functRight()
                 }
                 break;
             }
+#ifdef MOD_MONO_SAMPLING_ACTIVE
+            case SR->RADIO_COL1:
+            case SR->RADIO_COL2:
+            case SR->RADIO_COL3: SR->selectedPlace = SR->FORMAT_COL; break;
+            case SR->FORMAT_COL: SR->selectedPlace = SR->GAIN_COL; break;
+#else
             case SR->RADIO_COL1:
             case SR->RADIO_COL2:
             case SR->RADIO_COL3:
             case SR->LEVEL_COL: SR->selectedPlace = SR->GAIN_COL; break;
+#endif
             case SR->MONITOR_COL: break;
             default: SR->selectedPlace = SR->MONITOR_COL; break;
         }
@@ -2212,6 +2266,9 @@ static void functUp()
             case SR->RADIO_COL1: SR->changeRadioFreqBar(1); break;
             case SR->RADIO_COL2: break;
             case SR->RADIO_COL3: break;
+#ifdef MOD_MONO_SAMPLING_ACTIVE
+            case SR->FORMAT_COL: SR->changeFormatSelection(-1); break;
+#endif
             case SR->GAIN_COL: SR->changeGainBar(1); break;
             case SR->MONITOR_COL: SR->changeMonitorSelection(-1); break;
             default: break;
@@ -2254,6 +2311,9 @@ static void functDown()
             case SR->RADIO_COL1: SR->changeRadioFreqBar(-1); break;
             case SR->RADIO_COL2: break;
             case SR->RADIO_COL3: break;
+#ifdef MOD_MONO_SAMPLING_ACTIVE
+            case SR->FORMAT_COL: SR->changeFormatSelection(1); break;
+#endif
             case SR->GAIN_COL: SR->changeGainBar(-1); break;
             case SR->MONITOR_COL: SR->changeMonitorSelection(1); break;
         }
@@ -2548,6 +2608,31 @@ void cSampleRecorder::setDefaultMonitorEnable()
 
     newFileManager.setProjectStructChanged();
 }
+#ifdef MOD_MONO_SAMPLING_ACTIVE
+// List semantics, like the Monitor selector: index 0 = Stereo, 1 = Mono.
+void cSampleRecorder::changeFormatSelection(int16_t value)
+{
+    int16_t index = (recorderConfig.recordMono ? 1 : 0) + value;
+    if (index < 0)
+        index = 0;
+    if (index > 1)
+        index = 1;
+
+    // Read once when a recording is configured (functActionRecord); cannot alter a recording
+    // in progress.
+    recorderConfig.recordMono = (index == 1);
+    showFormat();
+    display.synchronizeRefresh();
+}
+
+void cSampleRecorder::setDefaultFormat()
+{
+    recorderConfig.recordMono = false;
+    showFormat();
+    display.synchronizeRefresh();
+}
+#endif
+
 void cSampleRecorder::setDefaultRadioFreq()
 {
     if (radio->isinitialized())
