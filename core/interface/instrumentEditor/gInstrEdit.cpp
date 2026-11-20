@@ -741,7 +741,11 @@ void cInstrumentEditor::showEffectScreen()
 
 #ifdef MOD_SAMPLE_INSTRUMENT_FX
     display.setControlText(label[5], "Sample rate");
+#ifdef MOD_FILTER_RENAME
+    display.setControlText(label[6], "Filter"); // MOD_FILTER_RENAME: label only
+#else
     display.setControlText(label[6], "DJ filter");
+#endif
 #else
     for (uint8_t i = 5; i < 7; i++)
     {
