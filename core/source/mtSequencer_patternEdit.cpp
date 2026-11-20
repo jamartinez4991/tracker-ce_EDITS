@@ -187,8 +187,16 @@ uint8_t Sequencer::generateRandomFx()
     uint8_t retVal;
     for (uint8_t a = 0; a < 100; a++)
     {
+#if defined(MOD_STEP_JUMP) || defined(MOD_COND_CHANCE)
+        // Step Jump / Cond. Chance (visible FX) must never be generated; keep the legacy upper bound
+        retVal = utilMathRandom::random(fx.FX_TYPE_OFF + 1, 46 - FX_COUNT_HIDDEN_FXes + 1);
+#else
         retVal = utilMathRandom::random(fx.FX_TYPE_OFF + 1, FX_COUNT - FX_COUNT_HIDDEN_FXes + 1);
+#endif
         if (retVal != fx.FX_TYPE_TEMPO && retVal != fx.FX_TYPE_BREAK_PATTERN // breaka nie chcemy
+#ifdef MOD_STEP_JUMP
+            && retVal != fx.FX_TYPE_STEP_JUMP
+#endif
         )
             break;
     }
@@ -1016,7 +1024,12 @@ void Sequencer::changeSelectionFxType(uint8_t index, int16_t value)
 
                 uint8_t previousType = _fx->type;
 
+                #if defined(MOD_STEP_JUMP) || defined(MOD_COND_CHANCE)
+                // internal ids now reach 52; fxNameToId() only yields valid ids, so the legacy 47 cap would truncate Step Jump
+                _fx->type = clamp<int>(interfaceGlobals.fxNameToId(name), 0, 255);
+#else
                 _fx->type = clamp<int>(interfaceGlobals.fxNameToId(name), 0, 47);
+#endif
 
                 if (previousType != _fx->type && !isMultiSelection())
                 {
@@ -1775,6 +1788,9 @@ AUDIO_CORE_RAM int16_t Sequencer::getFxMax(uint8_t fxID, bool forRandom)
         case fx.FX_TYPE_CHANCE: return forRandom ? fx.CHANCE_PROB_MAX : fx.CHANCE_MAX;
 
         case fx.FX_TYPE_BREAK_PATTERN: return 1;
+#ifdef MOD_STEP_JUMP
+        case fx.FX_TYPE_STEP_JUMP: return 128;
+#endif
 
         case fx.FX_TYPE_MICROMOVE: return 100;
         case fx.FX_TYPE_TEMPO: return MAX_TEMPO_FX;
@@ -1825,6 +1841,9 @@ AUDIO_CORE_RAM int16_t Sequencer::getFxMin(uint8_t fxID, bool forRandom)
         case fx.FX_TYPE_SWING: return 25;
         case fx.FX_TYPE_PANNING: return 0;
         case fx.FX_TYPE_BREAK_PATTERN: return 1;
+#ifdef MOD_STEP_JUMP
+        case fx.FX_TYPE_STEP_JUMP: return 1;
+#endif
         case fx.FX_TYPE_ROLL: return fx.ROLL_PERIOD_MIN;
         case fx.FX_TYPE_MIDI_CHORD: return MIN_CHORD;
 
@@ -1841,6 +1860,9 @@ int16_t Sequencer::getFxDefault(uint8_t fxID)
         case fx.FX_TYPE_SWING: return 50;
         case fx.FX_TYPE_ROLL: return 1;
         case fx.FX_TYPE_BREAK_PATTERN: return 1;
+#ifdef MOD_STEP_JUMP
+        case fx.FX_TYPE_STEP_JUMP: return 1;
+#endif
         case fx.FX_TYPE_PANNING: return 50;
         case fx.FX_TYPE_MICROTUNING: return 99;
         case fx.FX_TYPE_MIDI_CHORD: return MIN_CHORD;

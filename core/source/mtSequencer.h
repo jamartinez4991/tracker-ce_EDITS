@@ -184,6 +184,9 @@ class Sequencer
             FX_TYPE_R7,
             FX_TYPE_R8,
             FX_TYPE_R9,
+#ifdef MOD_STEP_JUMP
+            FX_TYPE_STEP_JUMP, // appended after legacy ids; value 1..128 = target step
+#endif
 
         };
 
@@ -488,6 +491,11 @@ class Sequencer
             uint8_t cancelStep = 0;
             uint32_t passCount = 0;
             bool lastCondFired = true;
+#ifdef MOD_STEP_JUMP
+            // Track Local Step Jump: recorded at uStep==1, consumed at the next step boundary
+            bool pendingJumpValid = false;
+            uint8_t pendingJumpTarget = 1; // user-visible step 1..128 as entered; resolved when consumed
+#endif
 
             struct strRollFx
             {
@@ -1016,6 +1024,11 @@ class Sequencer
     void masterRestartTracks(void);
 #endif
     bool evaluateChanceFx(uint8_t row, uint8_t value);
+#ifdef MOD_STEP_JUMP
+    void evaluateStepJumpControl(uint8_t row);
+    void applyPendingStepJump(uint8_t row, uint8_t trackLength);
+    void discardPendingStepJumps(void);
+#endif
 
     void play_microStep(int row);
     void inc_uStep(uint8_t row);

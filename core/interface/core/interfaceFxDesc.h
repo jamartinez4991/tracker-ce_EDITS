@@ -309,6 +309,15 @@ const char* const fxDescriptions[FX_COUNT] = {
     "\nAfter 057B, inversions:"
     "\n038: Maj/1st  059: Maj/2nd"
     "\n049: Min/1st  058: Min/2nd",
+#ifdef MOD_STEP_JUMP
+    // Sequencer::strFxConsts::enFxType::FX_TYPE_STEP_JUMP,
+    "Destination: Track \n\n"
+    "Selects the step this track plays next, after the current step has finished. "
+    "Value 1-128 is a step number; larger values wrap within the track length "
+    "(or the selection when looping a selection). Only affects its own track. "
+    "Chance on the same step must succeed for the jump to happen. "
+    "If both FX columns hold a jump, column 1 wins.",
+#endif
     // Sequencer::strFxConsts::enFxType::FX_TYPE_BREAK_PATTERN,
     "Destination: Pattern \n\n"
     "Breaks current pattern playback and jumps to the next pattern.",
@@ -583,6 +592,15 @@ const char* const fxDescriptions[FX_COUNT] = {
     "\nAfter 057B, inversions:"
     "\n038: Maj/1st  059: Maj/2nd"
     "\n049: Min/1st  058: Min/2nd",
+#ifdef MOD_STEP_JUMP
+    // Sequencer::strFxConsts::enFxType::FX_TYPE_STEP_JUMP,
+    "Destination: Track \n\n"
+    "Selects the step this track plays next, after the current step has finished. "
+    "Value 1-128 is a step number; larger values wrap within the track length "
+    "(or the selection when looping a selection). Only affects its own track. "
+    "Chance on the same step must succeed for the jump to happen. "
+    "If both FX columns hold a jump, column 1 wins.",
+#endif
     // Sequencer::strFxConsts::enFxType::FX_TYPE_BREAK_PATTERN,
     "Destination: Pattern \n\n"
     "Breaks current pattern playback and jumps to the next pattern.",
