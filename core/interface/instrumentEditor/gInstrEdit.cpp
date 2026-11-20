@@ -3,6 +3,9 @@
 #include "mtWavetableEnvelopes.h"
 #include "fileManager.h"
 #include <stdio.h>
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+#include "effect_sampleRateReduction.h"
+#endif
 
 #include "core/interfacePopups.h"
 #include "polyassert.h"
@@ -677,7 +680,11 @@ void cInstrumentEditor::showEffectScreen()
 {
     showTitleBar();
     showSendScreenFrame();
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+    frameData.placesCount = 7; // slots 0-3 effects, 4 (button only, skipped), 5-6 new effects
+#else
     frameData.placesCount = 4;
+#endif
 
     for (uint8_t i = 0; i < 8; i++)
     {
@@ -711,8 +718,19 @@ void cInstrumentEditor::showEffectScreen()
     display.setControlShow(barControl[2]);
     display.setControlShow(barControl[3]);
     display.setControlHide(filterModeListControl);
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+    display.setControlStyle(barControl[5],
+                            (controlStyleShow | controlStyleValue_0_100 | controlStyleBackground) |
+                              shadow | gradient);
+    display.setControlStyle(barControl[6],
+                            (controlStyleShow | controlStyleValue_0_100 | controlStyleBackground) |
+                              shadow | gradient);
+    display.setControlShow(barControl[5]);
+    display.setControlShow(barControl[6]);
+#else
     display.setControlHide(barControl[5]);
     display.setControlHide(barControl[6]);
+#endif
 
     display.setControlText(label[0], "Overdrive");
     display.setControlText(label[1], "Bit depth");
@@ -721,11 +739,16 @@ void cInstrumentEditor::showEffectScreen()
     display.setControlText(label[4], "Instrument");
     display.setControlText2(label[4], "MIDI Mapping");
 
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+    display.setControlText(label[5], "Sample rate");
+    display.setControlText(label[6], "DJ filter");
+#else
     for (uint8_t i = 5; i < 7; i++)
     {
         display.setControlText(label[i], "");
         display.setControlText2(label[i], "");
     }
+#endif
     display.setControlText(label[7], "Back");
     display.setControlText2(label[7], "");
 
@@ -737,6 +760,10 @@ void cInstrumentEditor::showEffectScreen()
     showParamsReverbSend();
     showParamsOverdrive();
     showParamsBitDepth();
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+    showParamsSampleRate();
+    showParamsDjFilter();
+#endif
 
     display.setRemoveControlStyle(label[1], controlStyleShowBitmap);
     display.setRemoveControlStyle(label[6], controlStyleShowBitmap);
@@ -780,8 +807,13 @@ void cInstrumentEditor::showEffectScreen()
 
 void cInstrumentEditor::showSendScreenFrame()
 {
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+    if (selectedPlaceSends == 4 || selectedPlaceSends > 6)
+        return;
+#else
     if (selectedPlaceSends > 3)
         return;
+#endif
 
     display.setControlValue(frameControl, selectedPlaceSends);
     display.setControlShow(frameControl);
@@ -1745,6 +1777,46 @@ void cInstrumentEditor::showParamsBitDepth()
     display.setControlValue(barControl[1], barDisplayedBitDepth);
     display.refreshControl(barControl[1]);
 }
+
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+void cInstrumentEditor::showParamsSampleRate()
+{
+    const uint8_t v = editorInstrument->sampleRateReduction;
+    if (v == 0)
+    {
+        sprintf(labelText[5], "Off");
+    }
+    else
+    {
+        const int hz = (int)(AudioSampleRateReduction::effectiveRateHz(v) + 0.5f);
+        if (hz >= 10000)
+            sprintf(labelText[5], "%d.%dk", hz / 1000, (hz % 1000) / 100);
+        else
+            sprintf(labelText[5], "%d Hz", hz);
+    }
+    display.setControlText2(label[5], labelText[5]);
+    display.refreshControl(label[5]);
+
+    display.setControlValue(barControl[5], (int)v * 100 / 255);
+    display.refreshControl(barControl[5]);
+}
+
+void cInstrumentEditor::showParamsDjFilter()
+{
+    const int8_t v = editorInstrument->djFilter;
+    if (v == 0)
+        sprintf(labelText[6], "Off");
+    else if (v < 0)
+        sprintf(labelText[6], "LP %d", -(int)v);
+    else
+        sprintf(labelText[6], "HP %d", (int)v);
+    display.setControlText2(label[6], labelText[6]);
+    display.refreshControl(label[6]);
+
+    display.setControlValue(barControl[6], ((int)v + 100) / 2);
+    display.refreshControl(barControl[6]);
+}
+#endif
 
 void cInstrumentEditor::refreshFramePosition()
 {

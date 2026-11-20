@@ -57,6 +57,10 @@ static void functEffectSelectReverb();
 static void functEffectSelectDelay();
 static void functEffectSelectOverdrive();
 static void functEffectSelectBitDepth();
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+static void functEffectSelectSampleRate();
+static void functEffectSelectDjFilter();
+#endif
 static void functOpenInstrumentSynthesizer();
 static void functEffectBack();
 
@@ -428,6 +432,10 @@ void cInstrumentEditor::setEffectScreenFunct()
     ip->setButtonObj(interfaceButton2, buttonPress, functEffectSelectReverb);
     ip->setButtonObj(interfaceButton3, buttonPress, functEffectSelectDelay);
     ip->setButtonObj(interfaceButton4, buttonPress, functOpenInstrumentSynthesizer);
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+    ip->setButtonObj(interfaceButton5, buttonPress, functEffectSelectSampleRate);
+    ip->setButtonObj(interfaceButton6, buttonPress, functEffectSelectDjFilter);
+#endif
 
     ip->setButtonObj(interfaceButton7, buttonPress, functEffectBack);
 }
@@ -444,6 +452,10 @@ void cInstrumentEditor::changeParamValue(int value, ValueChangeSource source)
             case 1: cInstrumentEditor::changeParamsBitDepth(value); break;
             case 2: cInstrumentEditor::changeParamsReverbSend(value); break;
             case 3: cInstrumentEditor::changeParamsDelaySend(value); break;
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+            case 5: cInstrumentEditor::changeParamsSampleRate(value); break;
+            case 6: cInstrumentEditor::changeParamsDjFilter(value); break;
+#endif
             default: break;
         }
         return;
@@ -579,6 +591,7 @@ static void functSelectParams(uint8_t button, uint8_t state)
         {
             return;
         }
+
     }
     else if (IE->mode == mtInstEditModeParams)
     {
@@ -840,6 +853,10 @@ static void functLeft()
     {
         if (IE->selectedPlaceSends > 0)
             IE->selectedPlaceSends--;
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+        if (IE->selectedPlaceSends == 4) // slot 4 is a button-only entry (Instrument / MIDI Mapping)
+            IE->selectedPlaceSends = 3;
+#endif
         IE->showSendScreenFrame();
         return;
     }
@@ -872,6 +889,10 @@ static void functRight()
     {
         if (IE->selectedPlaceSends < IE->frameData.placesCount - 1)
             IE->selectedPlaceSends++;
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+        if (IE->selectedPlaceSends == 4)
+            IE->selectedPlaceSends = 5;
+#endif
 
         IE->showSendScreenFrame();
         return;
@@ -958,6 +979,10 @@ static void functDelete(uint8_t state)
                 case 1: IE->setDefaultBitDepth(); break;
                 case 2: IE->setDefaultReverbSend(); break;
                 case 3: IE->setDefaultDelaySend(); break;
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+                case 5: IE->setDefaultSampleRate(); break;
+                case 6: IE->setDefaultDjFilter(); break;
+#endif
             }
 
             return;
@@ -2050,6 +2075,71 @@ void cInstrumentEditor::changeParamsBitDepth(int16_t value)
     if (isParamVisible)
         IE->showParamsBitDepth();
 }
+
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+// Static instrument parameters: refresh bits push the new value to active voices; no modulation.
+void cInstrumentEditor::changeParamsSampleRate(int16_t value)
+{
+    const int next = (int)IE->editorInstrument->sampleRateReduction + value;
+    IE->editorInstrument->sampleRateReduction = (uint8_t)(next < 0 ? 0 : (next > 255 ? 255 : next));
+
+    for (uint8_t i = 0; i < 8; i++)
+    {
+        instrumentPlayer[i].setRefreshBit(SAMPLE_RATE_REDUCTION_MASK);
+    }
+
+    newFileManager.setInstrumentStructChanged(mtProject.values.lastUsedInstrument);
+
+    bool isParamVisible = mtInterface.isInstrumentParamsScreenActive() &&
+                          (IE->mode == mtInstrumentEditorMode::mtInstEditModeParams) &&
+                          IE->isEffectsWindow;
+
+    if (isParamVisible)
+        IE->showParamsSampleRate();
+}
+
+void cInstrumentEditor::changeParamsDjFilter(int16_t value)
+{
+    const int next = (int)IE->editorInstrument->djFilter + value;
+    IE->editorInstrument->djFilter = (int8_t)(next < -100 ? -100 : (next > 100 ? 100 : next));
+
+    for (uint8_t i = 0; i < 8; i++)
+    {
+        instrumentPlayer[i].setRefreshBit(DJ_FILTER_MASK);
+    }
+
+    newFileManager.setInstrumentStructChanged(mtProject.values.lastUsedInstrument);
+
+    bool isParamVisible = mtInterface.isInstrumentParamsScreenActive() &&
+                          (IE->mode == mtInstrumentEditorMode::mtInstEditModeParams) &&
+                          IE->isEffectsWindow;
+
+    if (isParamVisible)
+        IE->showParamsDjFilter();
+}
+
+void cInstrumentEditor::setDefaultSampleRate()
+{
+    IE->editorInstrument->sampleRateReduction = 0;
+    for (uint8_t i = 0; i < 8; i++)
+    {
+        instrumentPlayer[i].setRefreshBit(SAMPLE_RATE_REDUCTION_MASK);
+    }
+    newFileManager.setInstrumentStructChanged(mtProject.values.lastUsedInstrument);
+    IE->showParamsSampleRate();
+}
+
+void cInstrumentEditor::setDefaultDjFilter()
+{
+    IE->editorInstrument->djFilter = 0;
+    for (uint8_t i = 0; i < 8; i++)
+    {
+        instrumentPlayer[i].setRefreshBit(DJ_FILTER_MASK);
+    }
+    newFileManager.setInstrumentStructChanged(mtProject.values.lastUsedInstrument);
+    IE->showParamsDjFilter();
+}
+#endif
 
 void changeParamsVelocity(int16_t value)
 {
@@ -3151,6 +3241,20 @@ static void functEffectSelectBitDepth()
     IE->showSendScreenFrame();
 }
 
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+static void functEffectSelectSampleRate()
+{
+    IE->selectedPlaceSends = 5;
+    IE->showSendScreenFrame();
+}
+
+static void functEffectSelectDjFilter()
+{
+    IE->selectedPlaceSends = 6;
+    IE->showSendScreenFrame();
+}
+#endif
+
 static void functOpenInstrumentSynthesizer()
 {
     IE->isEffectsWindow = false;
@@ -3601,3 +3705,4 @@ void cInstrumentEditor::setPlayButtonAction()
 {
     ip->setButtonObj(interfaceButtonPlay, buttonPress, functPlayAction);
 }
+

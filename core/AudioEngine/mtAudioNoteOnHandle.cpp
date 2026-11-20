@@ -41,6 +41,9 @@ uint8_t playerEngine ::noteOn(uint8_t instr_idx, int8_t note, int8_t _velocity)
     handleNoteOnReverbSend();
 
     handleNoteOnBitCrusher();
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+    handleNoteOnInstrumentFx();
+#endif
 
     status = 1; // playMemPtr->play(instr_idx,note);
     if (isTrackDisplayed)
@@ -112,6 +115,9 @@ AUDIO_CORE_RAM uint8_t playerEngine ::noteOn(uint8_t instr_idx,
     handleFxNoteOnPanning();
 
     handleFxNoteOnBitDepth();
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+    handleNoteOnInstrumentFx();
+#endif
 
     handleFxNoteOnDelaySend();
 
@@ -476,6 +482,18 @@ void playerEngine::handleNoteOnBitCrusher()
 {
     modBitDepth(mtProject.instrument[currentInstrument_idx].bitDepth);
 }
+
+#ifdef MOD_SAMPLE_INSTRUMENT_FX
+// Static instrument parameters: applied for every new note so voice reuse never keeps the previous
+// instrument's settings. Phase / held samples / filter state restart deterministically.
+void playerEngine::handleNoteOnInstrumentFx()
+{
+    sampleRateReductionPtr->reset();
+    djFilterPtr->reset();
+    modSampleRateReduction(mtProject.instrument[currentInstrument_idx].sampleRateReduction);
+    modDjFilter(mtProject.instrument[currentInstrument_idx].djFilter);
+}
+#endif
 
 AUDIO_CORE_RAM void playerEngine::handleNoteOnDelaySend()
 {
