@@ -11,6 +11,9 @@
 #if defined(MOD_MASTER_MULTIPLIER) && !defined(MOD_ACTION_PAGE4)
 #define MOD_P3_MULTIPLIER
 #endif
+#if defined(MOD_LIVE_REC_TOGGLES) && !defined(MOD_ACTION_PAGE4)
+#define MOD_P3_TOGGLES
+#endif
 
 uint8_t isMultiSelection();
 uint8_t isMultiSelectionOnOneLine();

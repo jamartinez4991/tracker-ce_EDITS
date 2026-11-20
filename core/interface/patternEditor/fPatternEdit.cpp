@@ -49,6 +49,10 @@ static void functPastePattern();
 
 static void functNamePattern();
 static void functNameTrack();
+#ifdef MOD_LIVE_REC_TOGGLES
+static void functToggleNoteOffDetection();
+static void functToggleRecMicrotiming();
+#endif
 
 static void functClockWarningPopupButtons(uint8_t button, uint8_t state);
 
@@ -5263,9 +5267,29 @@ void cPatternEditor::setActionButtonPage3Funct()
 #ifdef MOD_P3_MULTIPLIER
     ip->setButtonObj(interfaceButton2, buttonPress, functChangePatternMultiplier);
 #endif
+#ifdef MOD_P3_TOGGLES
+    ip->setButtonObj(interfaceButton3, buttonPress, functToggleNoteOffDetection);
+    ip->setButtonObj(interfaceButton4, buttonPress, functToggleRecMicrotiming);
+#endif
 
     ip->setButtonObj(interfaceButton7, buttonPress, functNextActionButtonPage);
 }
+
+#ifdef MOD_LIVE_REC_TOGGLES
+// Global options for the *next* live recordings. Active recordings keep what they captured, so
+// these stay editable while recording / while notes are held. They only edit RAM state.
+static void functToggleNoteOffDetection()
+{
+    sequencer.setLiveRecNoteOffDetection(!sequencer.getLiveRecNoteOffDetection());
+    PTE->showActionButtonPage3Labels();
+}
+
+static void functToggleRecMicrotiming()
+{
+    sequencer.setLiveRecMicrotiming(!sequencer.getLiveRecMicrotiming());
+    PTE->showActionButtonPage3Labels();
+}
+#endif
 
 // odsiwez przypisanie akcji oraz grafike przyciskow pod ekranem
 void cPatternEditor::refreshActualActionButtonPage()
