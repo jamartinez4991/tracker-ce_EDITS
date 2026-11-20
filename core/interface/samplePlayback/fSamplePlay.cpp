@@ -85,8 +85,156 @@ static void modGranularLoopType(int16_t value);
 
 constexpr uint32_t PLAY_REFRESH_US = 5000;
 
+#ifdef MOD_LAZY_CHOP
+// A session is bound to one voice, one note source and one instrument.
+bool cSamplePlayback::lazyChopBindingValid()
+{
+    if (!lazyChop.active || lazyChop.voiceIndex >= 8)
+        return false;
+
+    int16_t src = -1;
+    uint8_t instr = 0;
+    if (!sequencer.getManualNoteBinding(lazyChop.voiceIndex, src, instr))
+        return false;
+    if (src != lazyChop.noteSource || instr != lazyChop.instrumentIndex)
+        return false;
+
+    return instrumentPlayer[lazyChop.voiceIndex].isSamplePlaying();
+}
+
+// Called right after sequencer.handleNoteOn(). Verifies the real sequencer/engine state instead of
+// trusting getLastUsedVoice() alone.
+void cSamplePlayback::lazyChopTryStart(int16_t source)
+{
+    if (lazyChop.active) // never silently replace a running session
+        return;
+    if (mtProject.values.lastUsedInstrument >= kSampleInstrumentsCount || editorInstrument == nullptr)
+        return;
+
+    const strInstrument& instr = mtProject.instrument[mtProject.values.lastUsedInstrument];
+    if (instr.playMode != playModeSlice && instr.playMode != playModeBeatSlice)
+        return;
+    if (sliceScreenMode2)
+        return;
+
+    const uint8_t voice = engine.getLastUsedVoice();
+    if (voice >= 8)
+        return;
+
+    int16_t src = -1;
+    uint8_t seqInstr = 0;
+    if (!sequencer.getManualNoteBinding(voice, src, seqInstr))
+        return;
+    if (src != source || seqInstr != mtProject.values.lastUsedInstrument)
+        return;
+    if (!instrumentPlayer[voice].isSamplePlaying() || instrumentPlayer[voice].isSampleReversed())
+        return;
+
+    lazyChop = LazyChopSession();
+    lazyChop.active = true;
+    lazyChop.voiceIndex = voice;
+    lazyChop.instrumentIndex = mtProject.values.lastUsedInstrument;
+    lazyChop.noteSource = source;
+}
+
+// Add control while a session is active: remember the position, change nothing else.
+bool cSamplePlayback::lazyChopTryCapture()
+{
+    if (!lazyChop.active || lazyChop.finalizing)
+        return false;
+
+    if (!lazyChopBindingValid())
+    {
+        lazyChopFinalize();
+        return false; // session over: ordinary midpoint Add applies
+    }
+
+    if (instrumentPlayer[lazyChop.voiceIndex].isSampleReversed())
+        return true; // reverse: reject capture, but don't fall through to midpoint Add
+
+    const strInstrument& instr = mtProject.instrument[lazyChop.instrumentIndex];
+    const uint16_t pos = instrumentPlayer[lazyChop.voiceIndex].getWavePosition();
+
+    // Capacity: existing boundaries (a zero boundary counts when the table is empty) + pending.
+    const uint8_t existing = instr.sliceNumber == 0 ? 1 : instr.sliceNumber;
+    if (existing + lazyChop.pendingCount >= MAX_SLICE_NUMBER)
+        return true;
+
+    for (uint8_t i = 0; i < lazyChop.pendingCount; i++)
+    {
+        if (lazyChop.pendingPositions[i] == pos) // exact duplicate
+            return true;
+    }
+
+    lazyChop.pendingPositions[lazyChop.pendingCount++] = pos;
+    return true;
+}
+
+void cSamplePlayback::lazyChopOnNoteOff(int16_t source)
+{
+    if (lazyChop.active && lazyChop.noteSource == source)
+        lazyChopFinalize();
+}
+
+// Natural end, explicit cut / voice replacement, instrument change.
+void cSamplePlayback::lazyChopUpdate()
+{
+    if (!lazyChop.active || lazyChop.finalizing)
+        return;
+
+    if (mtProject.values.lastUsedInstrument != lazyChop.instrumentIndex || !lazyChopBindingValid())
+    {
+        lazyChopFinalize();
+    }
+}
+
+// Idempotent. Always commits to the instrument recorded at session start.
+void cSamplePlayback::lazyChopFinalize(bool refreshUi)
+{
+    if (!lazyChop.active || lazyChop.finalizing)
+        return;
+    lazyChop.finalizing = true;
+
+    const uint8_t instrIdx = lazyChop.instrumentIndex;
+    if (lazyChop.pendingCount > 0 && instrIdx < kSampleInstrumentsCount)
+    {
+        strInstrument* instr = &mtProject.instrument[instrIdx];
+        const uint8_t inserted =
+          sliceManager.insertSlicesAtPositions(instr, lazyChop.pendingPositions, lazyChop.pendingCount);
+
+        if (inserted > 0)
+        {
+            if (mtProject.sampleMemory[instrIdx].isStreamed)
+            {
+                // Never rebuild while a voice may be reading the shared buffers.
+                voiceStreamManager.requestInstrumentSliceCacheRefresh(instrIdx);
+            }
+
+            newFileManager.setInstrumentStructChanged(instrIdx);
+
+            if (refreshUi && instr == editorInstrument && moduleRefresh)
+            {
+                zoom.zoomPosition = instr->slices[instr->selectedSlice];
+                if ((zoom.zoomPosition > zoom.zoomEnd) || (zoom.zoomPosition < zoom.zoomStart))
+                {
+                    refreshSpectrum = 1;
+                }
+                showSlicesSelectValue();
+                showSlicesAdjustValue();
+                refreshSlicePoints = 1;
+            }
+        }
+    }
+
+    lazyChop = LazyChopSession(); // cleared only after the commit has completed
+}
+#endif
+
 void cSamplePlayback::update()
 {
+#ifdef MOD_LAZY_CHOP
+    lazyChopUpdate();
+#endif
     refreshLiveParams();
 
     // A MIDI or synth instrument has no waveform; the request waits for a sample instrument.
@@ -336,6 +484,9 @@ void cSamplePlayback::stop()
         mtPopups.toggleNoteKeyboardPopup();
     }
 
+#ifdef MOD_LAZY_CHOP
+    lazyChopFinalize(false); // before cleanup invalidates the note-source association
+#endif
     sequencer.stopManualNotes();
     sequencer.setMidiInVoiceMode(Sequencer::midiInVoiceMode_default);
     moduleRefresh = 0;
@@ -600,6 +751,9 @@ void cSamplePlayback::onEndTrackDisplay()
 void cSamplePlayback::noteOnHandle(uint8_t channel, uint8_t note, uint8_t velocity, int16_t source)
 {
     sequencer.handleNoteOn(channel, note, velocity, source);
+#ifdef MOD_LAZY_CHOP
+    lazyChopTryStart(source);
+#endif
 
     if (displayedTrack == engine.getLastUsedVoice())
     {
@@ -619,6 +773,9 @@ void cSamplePlayback::noteOffHandle(uint8_t channel, uint8_t note, uint8_t veloc
 {
     (void)velocity;
     sequencer.handleNoteOff(channel, note, 0, source);
+#ifdef MOD_LAZY_CHOP
+    lazyChopOnNoteOff(source);
+#endif
 }
 
 void cSamplePlayback::lightUpPadBoard()
@@ -1133,6 +1290,9 @@ static void functButton5()
     else if (SP->editorInstrument->playMode == playModeBeatSlice ||
              SP->editorInstrument->playMode == playModeSlice)
     {
+#ifdef MOD_LAZY_CHOP
+        SP->lazyChopFinalize(); // before the Add controls change meaning
+#endif
         SP->sliceScreenMode2 = !SP->sliceScreenMode2;
 
         if (!SP->sliceScreenMode2)
@@ -1741,6 +1901,9 @@ static void functPlayAction()
 
     if (sequencer.getSeqState() == Sequencer::SEQ_STATE_STOP)
     {
+#ifdef MOD_LAZY_CHOP
+        SP->lazyChopFinalize(); // before the voices are cut
+#endif
         for (uint8_t i = 0; i < 8; i++)
         {
             instrumentPlayer[i].noteOff(Sequencer::STEP_NOTE_OFF_CUT); // POTRZEBNE TO TU? xxx
@@ -1784,6 +1947,9 @@ static void changeZoom(int16_t value)
 
 static void changePlayModeSelection(int16_t value)
 {
+#ifdef MOD_LAZY_CHOP
+    SP->lazyChopFinalize(); // before the cut and any cache operation
+#endif
     if (SP->isPlayingSample)
     {
         mtPadBoard.cutAllInstrument();
@@ -2337,6 +2503,10 @@ static void modSliceAdjust(int16_t value)
 
 static void functAddSlice()
 {
+#ifdef MOD_LAZY_CHOP
+    if (SP->lazyChopTryCapture()) // active Lazy Chop session: capture instead of midpoint Add
+        return;
+#endif
     sliceManager.addSlice(SP->editorInstrument);
     if (mtProject.values.lastUsedInstrument < kSampleInstrumentsCount &&
         mtProject.sampleMemory[mtProject.values.lastUsedInstrument].isStreamed)

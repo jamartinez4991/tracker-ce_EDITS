@@ -182,6 +182,27 @@ class cSamplePlayback : public ModuleBase
     float playPitch = 1.0;
     bool sliceScreenMode2;
     int8_t displayedTrack = -1;
+#ifdef MOD_LAZY_CHOP
+    // ---- Lazy Chop (see features/lazy-chop) ----
+    // Own session identity: independent of displayedTrack / display-end flags.
+    struct LazyChopSession
+    {
+        bool active = false;
+        bool finalizing = false;
+        uint8_t voiceIndex = 0;      // sequencer track == playerEngine index
+        uint8_t instrumentIndex = 0; // commit target, fixed at session start
+        int16_t noteSource = -1;     // pad number / 12 / INTERFACE_BUTTON_PREVIEW
+        uint16_t pendingPositions[MAX_SLICE_NUMBER];
+        uint8_t pendingCount = 0;
+    } lazyChop;
+
+    void lazyChopTryStart(int16_t source);
+    bool lazyChopTryCapture();     // true = Add press consumed by an active session
+    void lazyChopOnNoteOff(int16_t source);
+    void lazyChopUpdate();         // natural end / cut / instrument change detection
+    void lazyChopFinalize(bool refreshUi = true);
+    bool lazyChopBindingValid();
+#endif
 
     strInstrument* editorInstrument = nullptr;
     uint32_t lastSampleLength = 0xFFFFFFFF;

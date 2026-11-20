@@ -2001,6 +2001,7 @@ void Sequencer::switchRowStep(uint8_t row) // przełączamy stepy w zależności
             PM->refreshTrackPattern = 1;
         }
     }
+
 }
 
 // The next pattern is asked for one step before it is needed and loaded by the main loop.
@@ -2938,6 +2939,7 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
                     {
                         step->volume = velocityToVolume(velocity);
                     }
+
                 }
                 break;
             }
@@ -3181,6 +3183,17 @@ void Sequencer::handleNoteOff(byte channel, // pochodzenie grida np. GRID_OUTSID
         newFileManager.setActualPatternStructChanged();
     }
 }
+
+#ifdef MOD_LAZY_CHOP
+bool Sequencer::getManualNoteBinding(uint8_t track, int16_t& source, uint8_t& instrument) const
+{
+    if (track >= kAllTracks || !player.track[track].noteOpen)
+        return false;
+    source = player.track[track].noteSource;
+    instrument = (uint8_t)player.track[track].stepSent.instrument;
+    return true;
+}
+#endif
 
 void Sequencer::updateTrackLengths(strPattern* pattern)
 {
