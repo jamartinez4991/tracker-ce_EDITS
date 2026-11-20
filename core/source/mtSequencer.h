@@ -471,6 +471,12 @@ class Sequencer
             bool recCapMicrotiming = true;
             bool recCapNoteOff = true;
 #endif
+#ifdef MOD_REALTIME_QUANTIZE
+            // Realtime Recording Quantize: positional adjustment (microsteps) computed at Note-On and
+            // re-applied at Note-Off so the performed duration is kept. Valid while recOpen != 0.
+            bool recQuantApplied = false;
+            int16_t recQuantAdj = 0;
+#endif
 
             int16_t noteSource = -1;
 
@@ -974,6 +980,42 @@ class Sequencer
     bool getLiveRecMicrotiming();
     void setLiveRecMicrotiming(bool on) { liveRecMicrotimingOverride = on ? 1 : 0; }
 #endif
+#if defined(MOD_REALTIME_QUANTIZE) || defined(MOD_STEP_ENTRY_DIVISION)
+    // Session-level settings (RAM only, never saved in the project). Reset on project load / reload.
+    uint8_t getQuantDivision() const { return sessionQuantDivision; }
+    void setQuantDivision(uint8_t v) { sessionQuantDivision = v % 6; }
+    uint8_t getQuantStrength() const { return sessionQuantStrength; }
+    void setQuantStrength(uint8_t v) { sessionQuantStrength = v > 100 ? 100 : v; }
+    uint8_t getStepEntryDivision() const { return sessionStepEntryDivision; }
+    void setStepEntryDivision(uint8_t v)
+    {
+        sessionStepEntryDivision = v % 6;
+        stepEntryFracStep = -1;
+    }
+#ifdef MOD_STEP_ENTRY_DIVISION
+    // Fractional position (microsteps inside the step) of the entry cursor, so a note entered there gets
+    // the matching micromove. Valid only for the step it was computed for.
+    void setStepEntryFraction(int16_t step, int16_t micro)
+    {
+        stepEntryFracStep = step;
+        stepEntryFracMicro = micro;
+    }
+    // -1 = leave micromove untouched (on-grid, 1/16, or the cursor was moved elsewhere)
+    int16_t stepEntryMicromoveFor(uint8_t step) const
+    {
+        if (sessionStepEntryDivision == 5 || stepEntryFracStep != step || stepEntryFracMicro <= 0)
+            return -1;
+        return (int16_t)(((int32_t)stepEntryFracMicro * 100 + 23) / 47);
+    }
+#endif
+    void resetSessionQuantSettings()
+    {
+        sessionQuantDivision = 5;
+        sessionQuantStrength = 100;
+        sessionStepEntryDivision = 5;
+        stepEntryFracStep = -1;
+    }
+#endif
 #ifdef MOD_PATTERN_BPM
     // Per-pattern BPM, stored in strPattern::rezerwa2/rezerwa3 (little endian). 0 = OFF (use Project BPM).
     static constexpr uint16_t kPatternBpmMin = 10;
@@ -1078,6 +1120,17 @@ class Sequencer
     bool liveRecNoteOffDetection = true;
 #endif
     uint8_t getDestRecordingStep(uint8_t track, bool quantize, bool noteOff = false);
+#if defined(MOD_REALTIME_QUANTIZE) || defined(MOD_STEP_ENTRY_DIVISION)
+    uint8_t sessionQuantDivision = 5;
+    uint8_t sessionQuantStrength = 100;
+    uint8_t sessionStepEntryDivision = 5;
+    int16_t stepEntryFracStep = -1;
+    int16_t stepEntryFracMicro = 0;
+#endif
+#ifdef MOD_REALTIME_QUANTIZE
+    uint8_t quantizedNoteOnPosition(uint8_t track, int16_t& adjOut, int16_t& micromoveOut);
+    uint8_t quantizedNoteOffPosition(uint8_t track, int16_t& micromoveOut);
+#endif
     // Settings an *active* recording on this track must use (captured at its start). Without the
     // mod these are exactly the stock behaviour.
     bool recMicroFor(uint8_t track)
