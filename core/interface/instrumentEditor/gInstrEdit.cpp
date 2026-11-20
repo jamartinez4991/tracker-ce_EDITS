@@ -1519,10 +1519,34 @@ void cInstrumentEditor::showEnvAmount()
         return;
 #endif
     const uint8_t envSlot = automationDestToEnvSlot(selectedEnvelope);
+#ifdef MOD_BIPOLAR_MOD_DEPTH
+    {
+        // Same presentation as the signed LFO depth: centred bar, explicit sign, exact zero.
+        // Amp stays unsigned (gain stage) and gets the plain 0..100 bar back.
+        const uint32_t shadow =
+          (display.getTheme().bottomScreenShadow > 0 ? controlStyleBottomShadow : 0);
+        const uint32_t gradient = (display.getTheme().barShadow > 0 ? controlStyleGradient : 0);
+        const bool bipolar = (envSlot != envAmp);
+        display.setControlStyle(barControl[7],
+                                (controlStyleShow |
+                                 (bipolar ? controlStyleValueLeftRight_100_100
+                                          : controlStyleValue_0_100) |
+                                 controlStyleBackground) |
+                                  shadow | gradient);
+        const float pct = editorInstrument->envelope[envSlot].amount * 100.0f;
+        if (!bipolar)
+            snprintf(labelText[7], sizeof(labelText[7]), "%.0f", (double)pct);
+        else if (pct == 0.0f)
+            snprintf(labelText[7], sizeof(labelText[7]), "0");
+        else
+            snprintf(labelText[7], sizeof(labelText[7]), "%+.0f", (double)pct);
+    }
+#else
     snprintf(labelText[7],
              sizeof(labelText[7]),
              "%.0f",
              (float)(editorInstrument->envelope[envSlot].amount * 100));
+#endif
 
     if (editorInstrument->isAutomationDestEnabled(selectedEnvelope))
     {
@@ -1610,6 +1634,14 @@ void cInstrumentEditor::showLfoAmount()
     else
 #endif
     {
+#ifdef MOD_BIPOLAR_MOD_DEPTH
+        // Amp LFO is unsigned: undo the centred style a previous signed Amount left on this bar.
+        display.setControlStyle(
+          barControl[col],
+          (controlStyleShow | controlStyleValue_0_100 | controlStyleBackground) |
+            (display.getTheme().bottomScreenShadow > 0 ? controlStyleBottomShadow : 0) |
+            (display.getTheme().barShadow > 0 ? controlStyleGradient : 0));
+#endif
     snprintf(labelText[col],
              sizeof(labelText[col]),
              "%.0f",
