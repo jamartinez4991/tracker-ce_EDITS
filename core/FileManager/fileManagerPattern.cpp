@@ -412,6 +412,15 @@ void cFileManager::checkVersionAndTranslate(Sequencer::strPattern* pattern)
             translatePatternFromFileVersion4ToFileVersion5(pattern);
         }
 
+#ifdef MOD_MASTER_MULTIPLIER
+        // v6 -> v7: rezerwa1 is now the master loop multiplier. Historical files never defined it,
+        // so whatever the byte holds is not trusted: every file older than v7 becomes x1.
+        if (pattern->header.fileStructureVersion[0] < 7)
+        {
+            pattern->rezerwa1 = 0;
+        }
+#endif
+
         for (uint8_t i = 0; i < 4; i++)
         {
             pattern->header.fileStructureVersion[i] = PATTERN_FILE_VERSION;
