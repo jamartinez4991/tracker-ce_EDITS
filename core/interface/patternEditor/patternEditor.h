@@ -7,6 +7,12 @@
 #include "mtKeyboardManager.h"
 #include "mtSequencer.h"
 
+#ifdef MOD_ACTION_PAGE4
+// Page 4 controls live on features of their own; each one is only shown when its feature is built in.
+#if defined(MOD_REALTIME_QUANTIZE) && !defined(MOD_LIVE_REC_TOGGLES)
+#error MOD_REALTIME_QUANTIZE needs MOD_LIVE_REC_TOGGLES (it extends the Microtiming Detection recording path)
+#endif
+#endif
 // Page 3 keeps the multiplier / recording toggles only while Page 4 does not exist
 #if defined(MOD_MASTER_MULTIPLIER) && !defined(MOD_ACTION_PAGE4)
 #define MOD_P3_MULTIPLIER
@@ -368,12 +374,27 @@ class cPatternEditor : public ModuleBase
 
     //--------------------------------------------------------
     // powiekszona funkcjolanosc przyciskow pod ekranem - 2 strony
+#ifdef MOD_ACTION_PAGE4
+    const uint8_t actionButtonsPagesCount = 4;
+#else
     const uint8_t actionButtonsPagesCount = 3;
+#endif
     uint8_t actualActionButtonsPage = 0;
 
     void setActionButtonPage1Funct();
     void setActionButtonPage2Funct();
     void setActionButtonPage3Funct();
+#ifdef MOD_ACTION_PAGE4
+    void setActionButtonPage4Funct();
+    void showActionButtonPage4Labels();
+    void showPage4Values(); // refreshes the value lines of Page 4 (only when Page 4 is shown)
+    bool recArmingShown = false; // Shift+Rec arm interface owns the label values (Armed / Unarmed)
+#endif
+#ifdef MOD_STEP_ENTRY_DIVISION
+    int32_t stepEntryMicro = 0; // cursor position inside the pattern in microsteps (non-1/16 entry only)
+    int32_t stepEntryStep = -1; // the step stepEntryMicro belongs to; if the cursor moved, resync
+    int stepEntryDelta(int patternLength, int actualStep, int fallback);
+#endif
     void refreshActualActionButtonPage();
 
     void showActionButtonPage1Labels();

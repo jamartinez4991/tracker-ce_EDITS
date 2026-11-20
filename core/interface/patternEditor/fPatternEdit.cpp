@@ -25,6 +25,9 @@ strTrackerPattern cPatternEditor::trackerPattern;
 cPatternEditor::strFill cPatternEditor::fillData[6];
 
 cPatternEditor patternEditor;
+#if defined(MOD_ACTION_PAGE4) || defined(MOD_STEP_ENTRY_DIVISION) || defined(MOD_REALTIME_QUANTIZE)
+#include "rtQuantize.h"
+#endif
 
 static cPatternEditor* PTE = &patternEditor;
 
@@ -52,6 +55,13 @@ static void functNameTrack();
 #ifdef MOD_LIVE_REC_TOGGLES
 static void functToggleNoteOffDetection();
 static void functToggleRecMicrotiming();
+#endif
+
+#ifdef MOD_ACTION_PAGE4
+static bool page4Active();
+static void page4Adjust(int delta);
+static void page4Pad(uint8_t pad);
+static void page4Light();
 #endif
 
 static void functClockWarningPopupButtons(uint8_t button, uint8_t state);
@@ -983,6 +993,39 @@ void cPatternEditor::focusOnActual()
       clamp<int8_t>(trackerPattern.firstVisibleTrack, 0, kAllTracks - columnCounts);
 }
 
+#ifdef MOD_STEP_ENTRY_DIVISION
+// Distance (in steps) from actualStep to the next Step Entry Division grid point. 1/16 keeps the
+// stock Step Jump behaviour ('fallback'). Fractional divisions (triplets) are tracked in microsteps
+// so they alternate 2,3,3 / 1,1,2 ... steps instead of drifting; moving the cursor by hand resyncs.
+int cPatternEditor::stepEntryDelta(int patternLength, int actualStep, int fallback)
+{
+    const int division = sequencer.getStepEntryDivision();
+    if (division == rtq::kDefaultDivision)
+    {
+        stepEntryStep = -1;
+        sequencer.setStepEntryFraction(-1, 0);
+        return fallback;
+    }
+    const int steps = patternLength + 1;
+    if (stepEntryStep != actualStep)
+        stepEntryMicro = actualStep * rtq::kMicrostepsPerStep;
+
+    int32_t next = rtq::nextEntryPosition(stepEntryMicro, division, actualStep);
+    next %= steps * rtq::kMicrostepsPerStep;
+    const int newStep = next / rtq::kMicrostepsPerStep;
+
+    stepEntryMicro = next;
+    stepEntryStep = newStep;
+    // the next note entered at newStep is placed at this fractional offset (microtiming)
+    sequencer.setStepEntryFraction(newStep, next % rtq::kMicrostepsPerStep);
+
+    int delta = newStep - actualStep;
+    if (delta <= 0)
+        delta += steps;
+    return delta;
+}
+#endif
+
 void cPatternEditor::moveCursorByStep()
 {
     moveCursorByStep(0);
@@ -990,21 +1033,29 @@ void cPatternEditor::moveCursorByStep()
 
 void cPatternEditor::moveCursorByStep(uint8_t val)
 {
-    if (mtProject.values.patternEditStep + val <= 0)
+    int stepSize = mtProject.values.patternEditStep;
+#ifdef MOD_STEP_ENTRY_DIVISION
+    // Step Entry Division != 1/16 replaces the Step Jump interval (the stored value is not touched)
+    if (val == 0)
+        stepSize = stepEntryDelta(sequencer.getPatternToUI()->track[0].length,
+                                  trackerPattern.actualStep,
+                                  stepSize);
+#endif
+    if (stepSize + val <= 0)
         return;
 
     int16_t patternLength = sequencer.getPatternToUI()->track[0].length;
 
-    if (trackerPattern.actualStep + mtProject.values.patternEditStep + val <= patternLength)
+    if (trackerPattern.actualStep + stepSize + val <= patternLength)
     {
-        trackerPattern.actualStep += mtProject.values.patternEditStep + val;
+        trackerPattern.actualStep += stepSize + val;
     }
     else
     {
         // The move can be longer than the pattern, as after pasting a tall block into a
         // short pattern, so wrapping once is not enough.
         trackerPattern.actualStep =
-          (trackerPattern.actualStep + mtProject.values.patternEditStep + val) %
+          (trackerPattern.actualStep + stepSize + val) %
           (patternLength + 1);
     }
 
@@ -1021,19 +1072,24 @@ void cPatternEditor::moveCursorByStepParallel()
         return;
     }
 
-    if (mtProject.values.patternEditStep <= 0)
+    int stepSize = mtProject.values.patternEditStep;
+#ifdef MOD_STEP_ENTRY_DIVISION
+    stepSize = stepEntryDelta(
+      sequencer.getPatternToUI()->track[0].length, trackerPattern.actualStep, stepSize);
+#endif
+    if (stepSize <= 0)
         return;
 
     int16_t patternLength = sequencer.getPatternToUI()->track[0].length;
 
-    if (trackerPattern.actualStep + mtProject.values.patternEditStep <= patternLength)
+    if (trackerPattern.actualStep + stepSize <= patternLength)
     {
-        trackerPattern.actualStep += mtProject.values.patternEditStep;
+        trackerPattern.actualStep += stepSize;
     }
     else
     {
         trackerPattern.actualStep =
-          (trackerPattern.actualStep + mtProject.values.patternEditStep) % (patternLength + 1);
+          (trackerPattern.actualStep + stepSize) % (patternLength + 1);
     }
     PTE->trackerPattern.selectStartStep = trackerPattern.actualStep;
     PTE->trackerPattern.selectEndStep = trackerPattern.actualStep;
@@ -2008,6 +2064,16 @@ void cPatternEditor::endExportSelection()
 
 void functEncoder(int16_t value)
 {
+#ifdef MOD_ACTION_PAGE4
+    if (page4Active())
+    {
+        if (PTE->fillState == 0 && !PTE->keyboardManager.getState())
+        {
+            page4Adjust(value > 0 ? (value > 1 ? value : 1) : (value < -1 ? value : -1));
+            return;
+        }
+    }
+#endif
     if (PTE->keyboardManager.getState())
     {
 #ifdef TRACKER_MINI
@@ -2166,6 +2232,13 @@ static void functShift(uint8_t state)
 
 static void functLeft()
 {
+#ifdef MOD_ACTION_PAGE4
+    if (page4Active())
+    {
+        page4Adjust(-1);
+        return;
+    }
+#endif
     if (PTE->fillState > 0)
     {
         PTE->changeFillPlace(-1);
@@ -2219,6 +2292,13 @@ static void functLeft()
 
 static void functRight()
 {
+#ifdef MOD_ACTION_PAGE4
+    if (page4Active())
+    {
+        page4Adjust(1);
+        return;
+    }
+#endif
     if (PTE->fillState > 0)
     {
         PTE->changeFillPlace(1);
@@ -2272,6 +2352,13 @@ static void functRight()
 
 static void functUp()
 {
+#ifdef MOD_ACTION_PAGE4
+    if (page4Active())
+    {
+        page4Adjust(1);
+        return;
+    }
+#endif
     if (PTE->fillState > 0)
     {
         bool isList = (PTE->fillPlace == 0 || PTE->fillPlace == 2 || PTE->fillPlace == 3) ||
@@ -2308,6 +2395,13 @@ static void functUp()
 
 static void functDown()
 {
+#ifdef MOD_ACTION_PAGE4
+    if (page4Active())
+    {
+        page4Adjust(-1);
+        return;
+    }
+#endif
     if (PTE->fillState > 0)
     {
         bool isList = (PTE->fillPlace == 0 || PTE->fillPlace == 2 || PTE->fillPlace == 3) ||
@@ -4252,6 +4346,13 @@ void cPatternEditor::lightUpPadBoard()
 
     //--------------------------------------------
 
+#ifdef MOD_ACTION_PAGE4
+    if (page4Active())
+    {
+        page4Light();
+        return;
+    }
+#endif
     if (selectedPlace >= 0)
     {
         switch (selectedPlace)
@@ -4676,6 +4777,14 @@ static void functPads(uint8_t pad, uint8_t state, int16_t velo)
         return;
     }
 
+#ifdef MOD_ACTION_PAGE4
+    if (page4Active())
+    {
+        if (state == buttonPress) // a pad release never applies a second change
+            page4Pad(pad);
+        return;
+    }
+#endif
     // obsługa przycisków pod ekranem (na poczatku bo dziala tez bez editmode)
     if (PTE->selectedPlace >= 0)
     {
@@ -5281,13 +5390,233 @@ void cPatternEditor::setActionButtonPage3Funct()
 static void functToggleNoteOffDetection()
 {
     sequencer.setLiveRecNoteOffDetection(!sequencer.getLiveRecNoteOffDetection());
+#ifdef MOD_ACTION_PAGE4
+    PTE->showPage4Values();
+#else
     PTE->showActionButtonPage3Labels();
+#endif
 }
 
 static void functToggleRecMicrotiming()
 {
     sequencer.setLiveRecMicrotiming(!sequencer.getLiveRecMicrotiming());
+#ifdef MOD_ACTION_PAGE4
+    PTE->showPage4Values();
+#else
     PTE->showActionButtonPage3Labels();
+#endif
+}
+#endif
+
+#ifdef MOD_ACTION_PAGE4
+// ##############################################################################################
+// ########################        PAGE 4: record / quantize / timing         ###################
+// ##############################################################################################
+// Buttons 2..6 are held-parameter controls. selectedPlace is the button index (it positions the
+// label frame); page 4 is told apart from Page 1's places by actualActionButtonsPage == 3, which
+// cannot change while a button is held.
+enum { kP4Quant = 2, kP4QStr = 3, kP4SQnt = 4, kP4Mult = 5, kP4Bpm = 6 };
+
+static bool page4Active()
+{
+    return PTE->actualActionButtonsPage == 3 && PTE->selectedPlace >= kP4Quant &&
+           PTE->selectedPlace <= kP4Bpm;
+}
+
+template <uint8_t PLACE>
+static void page4Hold(uint8_t state)
+{
+    if (state == buttonPress)
+    {
+        PTE->selectedPlace = PLACE;
+        PTE->unfocusPattern();
+        PTE->activateLabelsBorder();
+        PTE->lightUpPadBoard();
+        display.synchronizeRefresh();
+    }
+    else if (state == buttonRelease)
+    {
+        if (PTE->selectedPlace == PLACE)
+        {
+            PTE->focusOnPattern();
+        }
+    }
+}
+
+#ifdef MOD_REALTIME_QUANTIZE
+// Quantize Division / Strength only act while Microtiming Detection is on; their values are kept.
+static bool page4QuantActive()
+{
+    return sequencer.getLiveRecMicrotiming();
+}
+#endif
+
+static void page4Adjust(int delta)
+{
+    switch (PTE->selectedPlace)
+    {
+#ifdef MOD_REALTIME_QUANTIZE
+        case kP4Quant:
+            if (page4QuantActive())
+                sequencer.setQuantDivision((sequencer.getQuantDivision() + (delta > 0 ? 1 : 5)) % 6);
+            break;
+        case kP4QStr:
+            if (page4QuantActive())
+                sequencer.setQuantStrength(
+                  clamp<int>((int)sequencer.getQuantStrength() + delta, 0, 100));
+            break;
+#endif
+#ifdef MOD_STEP_ENTRY_DIVISION
+        case kP4SQnt:
+            sequencer.setStepEntryDivision((sequencer.getStepEntryDivision() + (delta > 0 ? 1 : 5)) % 6);
+            PTE->stepEntryStep = -1; // resync the entry cursor
+            break;
+#endif
+#ifdef MOD_MASTER_MULTIPLIER
+        case kP4Mult: PTE->changeActualPatternMultiplier(delta > 0 ? 1 : -1); break;
+#endif
+#ifdef MOD_PATTERN_BPM
+        case kP4Bpm:
+        {
+            Sequencer::strPattern* p = sequencer.getPatternToUI();
+            const int cur = Sequencer::getPatternBpm(p);
+            int next;
+            if (cur == 0)
+                next = delta > 0 ? clamp<int>((int)mtProject.values.globalTempo,
+                                              Sequencer::kPatternBpmMin,
+                                              Sequencer::kPatternBpmMax)
+                                 : 0; // OFF -> starts from the Project BPM
+            else
+            {
+                next = cur + delta;
+                if (next < Sequencer::kPatternBpmMin)
+                    next = 0; // below the range = OFF
+                if (next > Sequencer::kPatternBpmMax)
+                    next = Sequencer::kPatternBpmMax;
+            }
+            Sequencer::setPatternBpm(p, next);
+            newFileManager.setActualPatternStructChanged();
+            break;
+        }
+#endif
+        default: break;
+    }
+    PTE->showPage4Values();
+    PTE->lightUpPadBoard();
+}
+
+// Pad mappings: 6 divisions -> pads 1..6; strength 0..100 -> 48 pads scaled; multiplier -> pads 1..8;
+// Pattern BPM -> pad 1 = OFF, pads 2..48 scaled 10..400 (the encoder gives 1 BPM resolution).
+static void page4Pad(uint8_t pad)
+{
+    switch (PTE->selectedPlace)
+    {
+#ifdef MOD_REALTIME_QUANTIZE
+        case kP4Quant:
+            if (page4QuantActive() && pad < 6)
+                sequencer.setQuantDivision(pad);
+            break;
+        case kP4QStr:
+            if (page4QuantActive())
+                sequencer.setQuantStrength(mapClamped<int>(pad, 0, interfacePadsCount - 1, 0, 100));
+            break;
+#endif
+#ifdef MOD_STEP_ENTRY_DIVISION
+        case kP4SQnt:
+            if (pad < 6)
+            {
+                sequencer.setStepEntryDivision(pad);
+                PTE->stepEntryStep = -1;
+            }
+            break;
+#endif
+#ifdef MOD_MASTER_MULTIPLIER
+        case kP4Mult:
+            if (pad < Sequencer::kMasterMultiplierMax)
+                PTE->setActualPatternMultiplier(pad + 1);
+            break;
+#endif
+#ifdef MOD_PATTERN_BPM
+        case kP4Bpm:
+            Sequencer::setPatternBpm(
+              sequencer.getPatternToUI(),
+              pad == 0 ? 0
+                       : mapClamped<int>(pad,
+                                         1,
+                                         interfacePadsCount - 1,
+                                         Sequencer::kPatternBpmMin,
+                                         Sequencer::kPatternBpmMax));
+            newFileManager.setActualPatternStructChanged();
+            break;
+#endif
+        default: break;
+    }
+    PTE->showPage4Values();
+    PTE->lightUpPadBoard();
+}
+
+static void page4Light()
+{
+    int pad = -1;
+    switch (PTE->selectedPlace)
+    {
+#ifdef MOD_REALTIME_QUANTIZE
+        case kP4Quant: pad = page4QuantActive() ? sequencer.getQuantDivision() : -1; break;
+        case kP4QStr:
+            pad = page4QuantActive()
+                    ? mapClamped<int>(sequencer.getQuantStrength(), 0, 100, 0, interfacePadsCount - 1)
+                    : -1;
+            break;
+#endif
+#ifdef MOD_STEP_ENTRY_DIVISION
+        case kP4SQnt: pad = sequencer.getStepEntryDivision(); break;
+#endif
+#ifdef MOD_MASTER_MULTIPLIER
+        case kP4Mult: pad = Sequencer::getPatternMultiplier(sequencer.getPatternToUI()) - 1; break;
+#endif
+#ifdef MOD_PATTERN_BPM
+        case kP4Bpm:
+        {
+            const int bpm = Sequencer::getPatternBpm(sequencer.getPatternToUI());
+            pad = bpm == 0 ? 0
+                           : mapClamped<int>(bpm,
+                                             Sequencer::kPatternBpmMin,
+                                             Sequencer::kPatternBpmMax,
+                                             1,
+                                             interfacePadsCount - 1);
+            break;
+        }
+#endif
+        default: break;
+    }
+    if (pad >= 0 && pad < interfacePadsCount)
+        padsBacklight.setBackLayer(1, mtConfig.values.padsLightBack, pad);
+}
+
+// fourth page of the action buttons
+void cPatternEditor::setActionButtonPage4Funct()
+{
+    ip->clearButtonsRange(interfaceButton0, interfaceButton6);
+
+#ifdef MOD_LIVE_REC_TOGGLES
+    ip->setButtonObj(interfaceButton0, buttonPress, functToggleNoteOffDetection);
+    ip->setButtonObj(interfaceButton1, buttonPress, functToggleRecMicrotiming);
+#endif
+#ifdef MOD_REALTIME_QUANTIZE
+    ip->setButtonObj(interfaceButton2, page4Hold<kP4Quant>);
+    ip->setButtonObj(interfaceButton3, page4Hold<kP4QStr>);
+#endif
+#ifdef MOD_STEP_ENTRY_DIVISION
+    ip->setButtonObj(interfaceButton4, page4Hold<kP4SQnt>);
+#endif
+#ifdef MOD_MASTER_MULTIPLIER
+    ip->setButtonObj(interfaceButton5, page4Hold<kP4Mult>);
+#endif
+#ifdef MOD_PATTERN_BPM
+    ip->setButtonObj(interfaceButton6, page4Hold<kP4Bpm>);
+#endif
+
+    ip->setButtonObj(interfaceButton7, buttonPress, functNextActionButtonPage);
 }
 #endif
 
@@ -5316,6 +5645,14 @@ void cPatternEditor::refreshActualActionButtonPage()
             showActionButtonPage3Labels();
             break;
         }
+#ifdef MOD_ACTION_PAGE4
+        case 3:
+        {
+            setActionButtonPage4Funct();
+            showActionButtonPage4Labels();
+            break;
+        }
+#endif
         default: break;
     }
 }

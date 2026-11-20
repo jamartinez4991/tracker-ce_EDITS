@@ -4,6 +4,9 @@
 #include "mtAudioExport.h"
 #include "mtStructs.h"
 #include "patternEditor/patternEditor.h"
+#ifdef MOD_ACTION_PAGE4
+#include "rtQuantize.h"
+#endif
 #include "performanceMode/performanceMode.h"
 #include "scales.h"
 
@@ -132,7 +135,11 @@ void cPatternEditor::initDisplayControls()
     labelDataGreen.line.x2 = 40;
     labelDataGreen.line.y2 = 50;
 
+#ifdef MOD_ACTION_PAGE4
+    labelDataMore.dotIndicator.count = 4;
+#else
     labelDataMore.dotIndicator.count = 3;
+#endif
     labelDataMore.dotIndicator.current = 0;
 
     // lista 1
@@ -267,6 +274,9 @@ void cPatternEditor::initDisplayControls()
 
 void cPatternEditor::showDefaultScreen()
 {
+#ifdef MOD_ACTION_PAGE4
+    recArmingShown = false;
+#endif
     showTitleBar();
 
     showPattern(1);
@@ -406,7 +416,10 @@ void cPatternEditor::showPattern(uint8_t forceShow, uint8_t shiftPressed)
 
 void cPatternEditor::showLength(uint8_t forceShow)
 {
-#if defined(MOD_MASTER_MULTIPLIER)
+#ifdef MOD_ACTION_PAGE4
+    // every place that refreshes the length (pattern change, undo/redo, load) also refreshes Page 4
+    showPage4Values();
+#elif defined(MOD_MASTER_MULTIPLIER)
     // every place that refreshes the length (pattern change, undo/redo, load) also refreshes the Page 3 multiplier
     showMultiplier(forceShow);
 #endif
@@ -442,6 +455,11 @@ void cPatternEditor::showStep()
 #ifdef MOD_MASTER_MULTIPLIER
 void cPatternEditor::showMultiplier(uint8_t forceShow)
 {
+#ifdef MOD_ACTION_PAGE4
+    (void)forceShow;
+    showPage4Values();
+    return;
+#endif
     if (fillState)
         return;
     if (actualActionButtonsPage != 2)
@@ -1250,6 +1268,9 @@ void cPatternEditor::showMuteButtons(uint8_t state, bool midiTracks)
 //##############################################################################################
 void cPatternEditor::showRecordArmingButtons(uint8_t state, bool midiTracks)
 {
+#ifdef MOD_ACTION_PAGE4
+    recArmingShown = state != 0; // Page 4 value refreshes must not overwrite Armed / Unarmed
+#endif
 
     if (state)
     {
@@ -1689,6 +1710,130 @@ void cPatternEditor::showActionButtonPage3Labels()
 
     display.synchronizeRefresh();
 }
+
+#ifdef MOD_ACTION_PAGE4
+// Page 4: record / quantize / timing. Controls whose feature is not built in are left blank.
+void cPatternEditor::showActionButtonPage4Labels()
+{
+    recArmingShown = false; // a full Page 4 redraw means the arm interface has been left
+    for (uint8_t i = 0; i < 7; i++)
+    {
+        display.setControlText(label[i], "");
+        display.setControlText2(label[i], "");
+    }
+    display.setControlText(label[7], "More");
+    display.setControlText2(label[7], "");
+
+    bool used[8] = {};
+#ifdef MOD_LIVE_REC_TOGGLES
+    display.setControlText(label[0], "Note Off");
+    display.setControlText(label[1], "Microtiming");
+    used[0] = used[1] = true;
+#endif
+#ifdef MOD_REALTIME_QUANTIZE
+    display.setControlText(label[2], "Quant");
+    display.setControlText(label[3], "Q.Str");
+    used[2] = used[3] = true;
+#endif
+#ifdef MOD_STEP_ENTRY_DIVISION
+    display.setControlText(label[4], "SQnt");
+    used[4] = true;
+#endif
+#ifdef MOD_MASTER_MULTIPLIER
+    display.setControlText(label[5], "Multiplier");
+    used[5] = true;
+#endif
+#ifdef MOD_PATTERN_BPM
+    display.setControlText(label[6], "Pat. BPM");
+    used[6] = true;
+#endif
+
+    for (uint8_t i = 0; i < 7; i++)
+    {
+        display.setControlColors(label[i], display.getTheme().activeButtonLabelsColors);
+        display.setControlData(label[i], &labelDataGreen);
+    }
+    display.setControlColors(label[7], display.getTheme().moreButtonColors);
+    display.setControlData(label[7], &labelDataMore);
+
+    for (uint8_t i = 0; i < 8; i++)
+    {
+        display.setControlValue(label[i], 1);
+        display.setControlStyle(label[i],
+                                controlStyleCenterX | controlStyleCenterY | controlStyleFont3 |
+                                  controlStyleShow |
+                                  (i == 7 ? controlStyleSpecialFx2
+                                          : (used[i] && display.getTheme().patternEditorBottomButtonsLines
+                                               ? controlStyleSpecialFx
+                                               : 0)));
+        display.setControlStyle2(label[i],
+                                 controlStyleCenterX | controlStyleCenterY | controlStyleFont3);
+    }
+
+    labelDataMore.dotIndicator.current = 3;
+
+    showPage4Values();
+    for (uint8_t i = 0; i < 8; i++)
+        display.refreshControl(label[i]);
+    display.synchronizeRefresh();
+}
+
+void cPatternEditor::showPage4Values()
+{
+    if (actualActionButtonsPage != 3 || recArmingShown)
+        return;
+
+    static char sQuant[8], sStr[8], sEntry[8], sMult[8], sBpm[8];
+#ifdef MOD_LIVE_REC_TOGGLES
+    display.setControlText2(label[0], sequencer.getLiveRecNoteOffDetection() ? "ON" : "OFF");
+    display.setControlText2(label[1], sequencer.getLiveRecMicrotiming() ? "ON" : "OFF");
+    display.refreshControl(label[0]);
+    display.refreshControl(label[1]);
+#endif
+#ifdef MOD_REALTIME_QUANTIZE
+    {
+        // inactive (dimmed) while Microtiming Detection is off; the values are kept
+        const bool active = sequencer.getLiveRecMicrotiming();
+        sprintf(sQuant, "%s", rtq::kDivisionLabel[sequencer.getQuantDivision()]);
+        sprintf(sStr, "%d%%", sequencer.getQuantStrength());
+        display.setControlText2(label[2], sQuant);
+        display.setControlText2(label[3], sStr);
+        const auto colors = active ? display.getTheme().activeButtonLabelsColors
+                                   : display.getTheme().inactiveButtonLabelsColors;
+        display.setControlColors(label[2], colors);
+        display.setControlColors(label[3], colors);
+        display.refreshControl(label[2]);
+        display.refreshControl(label[3]);
+    }
+#endif
+#ifdef MOD_STEP_ENTRY_DIVISION
+    sprintf(sEntry, "%s", rtq::kDivisionLabel[sequencer.getStepEntryDivision()]);
+    display.setControlText2(label[4], sEntry);
+    display.refreshControl(label[4]);
+#endif
+#ifdef MOD_MASTER_MULTIPLIER
+    sprintf(sMult, "x%d", Sequencer::getPatternMultiplier(sequencer.getPatternToUI()));
+    display.setControlText2(label[5], sMult);
+    display.refreshControl(label[5]);
+#endif
+#ifdef MOD_PATTERN_BPM
+    {
+        const int bpm = Sequencer::getPatternBpm(sequencer.getPatternToUI());
+        if (bpm == 0)
+            sprintf(sBpm, "OFF");
+        else
+            sprintf(sBpm, "%d", bpm);
+        display.setControlText2(label[6], sBpm);
+        display.refreshControl(label[6]);
+    }
+#endif
+    (void)sQuant;
+    (void)sStr;
+    (void)sEntry;
+    (void)sMult;
+    (void)sBpm;
+}
+#endif
 
 void cPatternEditor::showTitleBar()
 {

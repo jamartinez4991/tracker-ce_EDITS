@@ -140,6 +140,11 @@ void WorkspaceProjectLoad::loadProjectFromWorkspaceInit()
     // jezeli np ladowany jest starsza wersja pliku i struktura jest modyfikwoana
     newFileManager.clearChangeFlags();
 
+#if defined(MOD_REALTIME_QUANTIZE) || defined(MOD_STEP_ENTRY_DIVISION)
+    // session-level settings: a project change or reload returns them to the defaults
+    sequencer.resetSessionQuantSettings();
+#endif
+
     currentInstrument = 0;
     sampleLoadStep = 0;
 
