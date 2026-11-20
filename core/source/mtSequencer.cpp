@@ -345,7 +345,22 @@ AUDIO_CORE_RAM void Sequencer::play_microStep(int row)
     if (playerRow.uStep == 1 && player.isPlay && row == 0)
     {
 
+#ifdef MOD_PATTERN_PROGRESSION
+        // Pattern-level clock: the preload request must not depend on Track 1's (jumpable) playhead,
+        // otherwise a Step Jump loop on Track 1 means the next pattern is never loaded.
         bool isLastStepInPattern = playerRow.actual_pos == patternRow.length;
+        if (!player.selectionMode && !player.performanceMode)
+        {
+#ifdef MOD_MASTER_MULTIPLIER
+            if (player.masterActiveMult > 1)
+                isLastStepInPattern = (player.masterStep + 1) >= player.masterLength;
+            else
+#endif
+                isLastStepInPattern = playerRow.actual_pos_absolute == patternRow.length;
+        }
+#else
+        bool isLastStepInPattern = playerRow.actual_pos == patternRow.length;
+#endif
         bool isLastStepInSelectionMode =
           player.selectionModeLooped && playerRow.actual_pos == player.selectionModeLastStep;
 
@@ -358,7 +373,11 @@ AUDIO_CORE_RAM void Sequencer::play_microStep(int row)
                 player.sequencialSwitch_loaded = true;
             }
         }
+#ifdef MOD_PATTERN_PROGRESSION
+        else if (isLastStepInPattern && player.songMode)
+#else
         else if (((playerRow.actual_pos == patternRow.length)) && player.songMode)
+#endif
         {
             loadNextPattern(newFileManager.getNextSongPattern());
         }
