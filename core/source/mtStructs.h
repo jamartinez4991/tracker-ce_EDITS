@@ -46,8 +46,14 @@ const uint8_t PROJECT_FILE_VERSION = 17;   // wersja struktury pliku projektu
 #define MOD_INSTRUMENT_EXT
 #endif
 // Editor: Amount column hosts extra sub-parameters (LFO polarity, pitch semitone/cent depth).
+#if defined(MOD_PITCH_RANGE) || defined(MOD_LFO_POLARITY)
+#define MOD_AMOUNT_SUBPARAMS
+#endif
 // LFO output is produced in a canonical [-1,+1] form (amount applied afterwards) when signed depth
 // and/or polarity is enabled.
+#if defined(MOD_LFO_SIGNED_DEPTH) || defined(MOD_LFO_POLARITY)
+#define MOD_LFO_CANONICAL
+#endif
 #ifdef MOD_INSTRUMENT_EXT
 // Shared by the struct-extending mods (see features/CROSS_FEATURE.md): one fixed 8-byte block is
 // appended to strInstrument whenever ANY of them is enabled -> file version 10. Because the block

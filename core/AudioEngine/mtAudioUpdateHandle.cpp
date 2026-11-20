@@ -256,8 +256,21 @@ inline void playerEngine::handleUpdateRefreshFinetune()
             currentEnvelopeModification[envFinetune] = 0;
         }
 
+#ifdef MOD_PITCH_RANGE
+        // Extended pitch range: the envelope/LFO output scales the combined semitone+cent depth
+        // (float cents, no integer quantisation) and goes to the playback engine as a pitch ratio.
+        // Ordinary fine-tune (below) no longer receives the modulation.
+        {
+            const strInstrument& pmInstr = mtProject.instrument[currentInstrument_idx];
+            const float combinedDepthCents =
+              (float)pmInstr.pitchModSemitones * 100.0f + (float)pmInstr.pitchModCents;
+            modPitchModulation(currentEnvelopeModification[envFinetune] * combinedDepthCents);
+        }
+        int32_t localFinetuneMod = 0;
+#else
         int32_t localFinetuneMod =
           currentEnvelopeModification[envFinetune] * MAX_INSTRUMENT_FINETUNE;
+#endif
 
         int16_t localFinetune = 0;
 

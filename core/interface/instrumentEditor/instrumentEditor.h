@@ -292,6 +292,26 @@ class cInstrumentEditor : public ModuleBase
     void showLfoShape();
     void showLfoSpeed();
     void showLfoAmount();
+#ifdef MOD_AMOUNT_SUBPARAMS
+    // Amount column sub-parameters (press the selected Amount button again to cycle):
+    // Amount -> [Polarity (LFO)] -> [Pitch semitone depth -> Pitch cent depth (Pitch dest.)]
+    enum AmountSub : uint8_t
+    {
+        kSubAmount = 0,
+        kSubPolarity = 1,
+        kSubPitchSemitones = 2,
+        kSubPitchCents = 3
+    };
+    uint8_t amountSub = kSubAmount;
+    uint8_t amountSubPlace = 0;
+    uint8_t amountSubEnv = 0;
+    uint8_t amountSubLoop = 0;
+    uint8_t getAmountSub();
+    void advanceAmountSub();
+    void changeAmountSub(int16_t value);
+    bool showAmountSub(); // returns true when a sub-parameter (not Amount) was drawn
+    uint8_t amountColumn() const;
+#endif
     void showWtEnvWave();
     void showWtWarpXY();
     void showWtWarpX();
