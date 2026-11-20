@@ -2001,6 +2001,7 @@ void Sequencer::switchRowStep(uint8_t row) // przełączamy stepy w zależności
             PM->refreshTrackPattern = 1;
         }
     }
+
 }
 
 // The next pattern is asked for one step before it is needed and loaded by the main loop.
@@ -2635,6 +2636,12 @@ uint8_t Sequencer::recMicrotiming()
     return mtConfig.general.recOptions == recOptions_microtimingAndVelocity ||
            mtConfig.general.recOptions == recOptions_microtiming;
 }
+#ifdef MOD_LIVE_REC_TOGGLES
+bool Sequencer::getLiveRecMicrotiming()
+{
+    return liveRecMicrotimingOverride < 0 ? (recMicrotiming() != 0) : (liveRecMicrotimingOverride != 0);
+}
+#endif
 uint8_t Sequencer::recVelocity()
 {
     return mtConfig.general.recOptions == recOptions_microtimingAndVelocity ||
@@ -2718,6 +2725,12 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
         int8_t singleArmedTrack = getSingleArmedTrack();
         int startTrack = (singleArmedTrack >= 0) ? singleArmedTrack : getActualTrack();
         int endTrack = (singleArmedTrack >= 0) ? (singleArmedTrack + 1) : kAllTracks;
+#ifdef MOD_LIVE_REC_TOGGLES
+        // A source pressed while other sources are still held joins the open group: it keeps the
+        // settings captured when the group started.
+        const bool joinsOpenGroup = singleArmedTrack >= 0 && liveRecHeldNotesCount > 0 &&
+                                    player.track[singleArmedTrack].recOpen;
+#endif
 
         if (singleArmedTrack >= 0)
         {
@@ -2759,7 +2772,19 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
 
         for (int tr = startTrack; tr < endTrack; tr++)
         {
-            uint8_t destinationStep = isAnticipatedBeat1 ? 0 : getDestRecordingStep(tr, !recMicrotiming());
+#ifdef MOD_LIVE_REC_TOGGLES
+            // Captured settings (join) or the current global options (new recording lifecycle).
+            // Only committed to the track once the note actually enters the recording path below.
+            const bool trMicro = (joinsOpenGroup && tr == singleArmedTrack)
+                                   ? player.track[tr].recCapMicrotiming
+                                   : getLiveRecMicrotiming();
+            const bool trNoteOff = (joinsOpenGroup && tr == singleArmedTrack)
+                                     ? player.track[tr].recCapNoteOff
+                                     : liveRecNoteOffDetection;
+#else
+            const bool trMicro = recMicrotiming();
+#endif
+            uint8_t destinationStep = isAnticipatedBeat1 ? 0 : getDestRecordingStep(tr, !trMicro);
 
             strPattern::strTrack::strStep* step = &currentPattern->track[tr].step[destinationStep];
 
@@ -2818,8 +2843,12 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
 
                     player.track[tr].recOpen = 1;
                     player.track[tr].recNoteOnStepIdx = destinationStep;
+#ifdef MOD_LIVE_REC_TOGGLES
+                    player.track[tr].recCapMicrotiming = trMicro;
+                    player.track[tr].recCapNoteOff = trNoteOff;
+#endif
 
-                    if (recMicrotiming())
+                    if (trMicro)
                     {
                         step->micromove =
                           isAnticipatedBeat1
@@ -2938,6 +2967,7 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
                     {
                         step->volume = velocityToVolume(velocity);
                     }
+
                 }
                 break;
             }
@@ -3047,17 +3077,19 @@ void Sequencer::handleNoteOff(byte channel, // pochodzenie grida np. GRID_OUTSID
 
                     if (wasRecOpen && !padInstrumentEdit && !player.preRecMetronomeActive)
                     {
-                        uint8_t destinationStep = getDestRecordingStep(tr, !recMicrotiming(), true);
+                        uint8_t destinationStep =
+                          getDestRecordingStep(tr, !recMicroFor(tr), true);
                         strPattern::strTrack::strStep* step =
                           &currentPattern->track[tr].step[destinationStep];
 
-                        if (step->isNoteEmpty())
+                        // Only the pattern Note Off is gated; the preview release above already ran.
+                        if (recNoteOffFor(tr) && step->isNoteEmpty())
                         {
                             wasChangeInPattern = true;
 
                             step->note = STEP_NOTE_OFF_DEFAULT;
 
-                            if (recMicrotiming() && destinationStep == player.track[tr].actual_pos)
+                            if (recMicroFor(tr) && destinationStep == player.track[tr].actual_pos)
                             {
                                 step->micromove =
                                   clamp<int>(mapClamped<int>(player.uStep, 1, 48, 0, 100),
@@ -3074,7 +3106,7 @@ void Sequencer::handleNoteOff(byte channel, // pochodzenie grida np. GRID_OUTSID
             liveRecHeldNotesCount = 0;
             for (uint8_t tr = 0; tr < kAllTracks; tr++)
             {
-                uint8_t destinationStep = getDestRecordingStep(tr, !recMicrotiming(), true);
+                uint8_t destinationStep = getDestRecordingStep(tr, !recMicroFor(tr), true);
                 bool shouldOff = (player.track[tr].recOpen || player.track[tr].noteOpen) &&
                                  player.track[tr].stepSent.note == note;
 
@@ -3122,13 +3154,14 @@ void Sequencer::handleNoteOff(byte channel, // pochodzenie grida np. GRID_OUTSID
                         strPattern::strTrack::strStep* step =
                           &currentPattern->track[tr].step[destinationStep];
 
-                        if (step->isNoteEmpty())
+                        // Only the pattern Note Off is gated; the preview release above already ran.
+                        if (recNoteOffFor(tr) && step->isNoteEmpty())
                         {
                             wasChangeInPattern = true;
 
                             step->note = STEP_NOTE_OFF_DEFAULT;
 
-                            if (recMicrotiming() && destinationStep == player.track[tr].actual_pos)
+                            if (recMicroFor(tr) && destinationStep == player.track[tr].actual_pos)
                             {
                                 step->micromove =
                                   clamp<int>(mapClamped<int>(player.uStep, 1, 48, 0, 100),

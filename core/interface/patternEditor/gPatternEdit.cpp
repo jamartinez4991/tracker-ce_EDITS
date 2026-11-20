@@ -1598,6 +1598,17 @@ void cPatternEditor::showActionButtonPage3Labels()
     display.setControlText2(label[6], "");
     display.setControlText2(label[7], "");
 
+#ifdef MOD_P3_TOGGLES
+    display.setControlText(label[3], "Note Off");
+    display.setControlText2(label[3], sequencer.getLiveRecNoteOffDetection() ? "ON" : "OFF");
+    display.setControlText(label[4], "Microtiming");
+    display.setControlText2(label[4], sequencer.getLiveRecMicrotiming() ? "ON" : "OFF");
+    display.setControlColors(label[3], display.getTheme().activeButtonLabelsColors);
+    display.setControlColors(label[4], display.getTheme().activeButtonLabelsColors);
+    display.setControlData(label[3], &labelDataGreen);
+    display.setControlData(label[4], &labelDataGreen);
+#endif
+
     if (editMode)
     {
     }
@@ -1620,7 +1631,11 @@ void cPatternEditor::showActionButtonPage3Labels()
           label[i],
           controlStyleCenterX | controlStyleCenterY | controlStyleFont3 | controlStyleShow |
             (i == 7 ? controlStyleSpecialFx2
-                    : (i < 2 ? (display.getTheme().patternEditorBottomButtonsLines
+                    : (i < 2
+#ifdef MOD_P3_TOGGLES
+                           || i == 3 || i == 4
+#endif
+                         ? (display.getTheme().patternEditorBottomButtonsLines
                                   ? controlStyleSpecialFx
                                   : 0)
                              : 0)));
