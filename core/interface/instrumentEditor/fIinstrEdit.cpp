@@ -1493,6 +1493,20 @@ void cInstrumentEditor::changeEnvAmount(int idx, int16_t value)
 
     float fVal = value * 0.01;
 
+#ifdef MOD_BIPOLAR_MOD_DEPTH
+    // Bipolar envelope Amount (-100..+100 %), whole-percent steps so the encoder lands exactly on
+    // zero; same convention as the signed LFO depth. Amp is a gain stage and stays unsigned.
+    if (envIdx != envAmp)
+    {
+        float nv = roundf((IE->editorInstrument->envelope[envIdx].amount + fVal) * 100.0f) / 100.0f;
+        if (nv < -AMOUNT_MAX)
+            nv = -AMOUNT_MAX;
+        else if (nv > AMOUNT_MAX)
+            nv = AMOUNT_MAX;
+        IE->editorInstrument->envelope[envIdx].amount = nv;
+    }
+    else
+#endif
     if (IE->editorInstrument->envelope[envIdx].amount + fVal < 0)
         IE->editorInstrument->envelope[envIdx].amount = 0;
     else if (IE->editorInstrument->envelope[envIdx].amount + fVal > AMOUNT_MAX)
@@ -2723,10 +2737,28 @@ int16_t cInstrumentEditor::getControlChangeDelta(SampleInstrumentParamsCC param,
         case kFinetuneAmount:
         {
             const int envIdx = automationDestToEnvSlot(automationIdx);
+#ifdef MOD_BIPOLAR_MOD_DEPTH
+            // WT envelope (loop 2) edits the envelope Amount like the ADSR does (the Amount button
+            // does); stock routed it to the LFO amount, which that mode never reads.
+            const bool amountIsEnvelope = (IE->editorInstrument->envelope[envIdx].loop == 0 ||
+                                           IE->editorInstrument->envelope[envIdx].loop == 2);
+            float amount = amountIsEnvelope ? IE->editorInstrument->envelope[envIdx].amount
+                                            : IE->editorInstrument->lfo[envIdx].amount;
+#else
             float amount = IE->editorInstrument->envelope[envIdx].loop
                              ? IE->editorInstrument->lfo[envIdx].amount
                              : IE->editorInstrument->envelope[envIdx].amount;
+#endif
             float destValue = map((float)cc_value, 0.0f, 127.0f, 0.0f, AMOUNT_MAX);
+#ifdef MOD_BIPOLAR_MOD_DEPTH
+            // Bipolar envelope Amount: same CC law as the signed LFO depth (0 = -100 %,
+            // 64 = 0 %, 127 = +100 %). Amp stays unsigned.
+            if (envIdx != envAmp && amountIsEnvelope)
+            {
+                destValue = (cc_value <= 64) ? ((float)cc_value - 64.0f) / 64.0f
+                                             : ((float)cc_value - 64.0f) / 63.0f;
+            }
+#endif
 #ifdef MOD_LFO_SIGNED_DEPTH
             // Signed LFO depth: CC 0 = -100 %, CC 64 = 0 % (true zero), CC 127 = +100 %.
             if (envIdx != envAmp && (IE->editorInstrument->envelope[envIdx].loop == 1 ||
@@ -2816,7 +2848,12 @@ void cInstrumentEditor::changeControlChangeParam(SampleInstrumentParamsCC param,
         case kWavetablePositionAmount:
         case kGranularPositionAmount:
         case kFinetuneAmount:
+#ifdef MOD_BIPOLAR_MOD_DEPTH
+            if (IE->editorInstrument->envelope[automationDestToEnvSlot(automationIdx)].loop == 1 ||
+                IE->editorInstrument->envelope[automationDestToEnvSlot(automationIdx)].loop == 3)
+#else
             if (IE->editorInstrument->envelope[automationDestToEnvSlot(automationIdx)].loop)
+#endif
             {
                 changeLfoAmount(automationIdx, delta);
             }

@@ -437,6 +437,18 @@ void envelopeGenerator::calc()
                 tempOutput = amount; // przy attack - 0 powstawał nan i loop dzialal nieprawidlowo -
                                      // andrzej2000
 
+#ifdef MOD_BIPOLAR_MOD_DEPTH
+            // Signed amount: with a negative amount the attack ramps from killOutput (<= 0) down
+            // towards amount, so the stock lower clamp at killOutput would pin it at 0. Mirror the
+            // clamp for negative amounts; positive amounts keep the stock clamp bit-for-bit.
+            if (!isRandom && amount < 0.0f)
+            {
+                envTemp.tempOutput = clamp<float>(
+                  tempOutput, MIN_OUTPUT, (envTemp.killOutput < 0.0f) ? envTemp.killOutput : 0.0f);
+                envTemp.maxOutput = envTemp.tempOutput;
+                break;
+            }
+#endif
             envTemp.tempOutput =
               isRandom ? randomValue : clamp<float>(tempOutput, envTemp.killOutput, MAX_OUTPUT);
             envTemp.maxOutput = envTemp.tempOutput;

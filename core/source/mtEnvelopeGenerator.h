@@ -12,6 +12,9 @@
 
 // MOD_BIPOLAR_MOD_DEPTH (see features/bipolar-mod-depth): signed ADSR / WT-envelope Amount.
 // Builds on the signed LFO depth (editor conventions, CC mapping).
+#if defined(MOD_BIPOLAR_MOD_DEPTH) && !defined(MOD_LFO_SIGNED_DEPTH)
+#error "MOD_BIPOLAR_MOD_DEPTH requires MOD_LFO_SIGNED_DEPTH"
+#endif
 
 // #define CHANNEL_QTY 20
 #define MAX_ADSR_PAR 4095
