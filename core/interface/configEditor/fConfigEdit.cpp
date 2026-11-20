@@ -2,6 +2,9 @@
 #include "Profiler.h"
 #include "configEditor.h"
 #include "configEditor/configEditor.h"
+#ifdef MOD_MIDI_SLOT_TRIGGER
+#include "mtMidiSlotTrigger.h"
+#endif
 #include "configEditor/configMenuActions.h"
 #include "ThemeManager.h"
 #include "configMenu.h"
@@ -110,6 +113,9 @@ void cConfigEditor::update()
 extern cMenuGroup menuMetro;
 void cConfigEditor::start(uint32_t options)
 {
+#ifdef MOD_MIDI_SLOT_TRIGGER
+    midiSlotTriggerRefreshLabels();
+#endif
     moduleRefresh = 1;
 
     exitOnButtonRelease = 0;

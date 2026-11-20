@@ -8,6 +8,9 @@
 #include "log.h"
 #include "mtAudioEngine.h"
 #include "mtSequencer.h"
+#ifdef MOD_MIDI_SLOT_TRIGGER
+#include "mtMidiSlotTrigger.h"
+#endif
 #include "mtStructs.h"
 #include "sampleRecorder/sampleRecorder.h"
 
@@ -2968,6 +2971,20 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
                         step->volume = velocityToVolume(velocity);
                     }
 
+#ifdef MOD_MIDI_SLOT_TRIGGER
+                    // Edit-mode MIDI entry never wrote micromove. For slot-triggered notes, capture it
+                    // when Microtiming Detection is on, the sequencer is running and the cursor step
+                    // is the step currently being played (the same value live recording writes).
+                    if (midiSlotTriggerNoteInProgress && recMicrotiming() && isPlay() &&
+                        !player.preRecMetronomeActive &&
+                        player.track[trackIdx].actual_pos == sel->firstStep)
+                    {
+                        step->micromove =
+                          clamp<int>(mapClamped<int>(player.uStep, 1, 48, 0, 100),
+                                     getFxMin(fx.FX_TYPE_MICROMOVE),
+                                     getFxMax(fx.FX_TYPE_MICROMOVE));
+                    }
+#endif
                 }
                 break;
             }

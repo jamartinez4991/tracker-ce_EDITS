@@ -7,6 +7,9 @@
 #include "ThemeManager.h"
 
 #include "mtStructs.h"
+#ifdef MOD_MIDI_SLOT_TRIGGER
+#include "mtMidiSlotTrigger.h"
+#endif
 
 #include "performanceMode/performanceEngine.h"
 
@@ -335,6 +338,9 @@ void checkConfig()
 
     mtConfig.midi.slaveClockComp =
       clamp(mtConfig.midi.slaveClockComp, (uint8_t)0, (uint8_t)kExternalClockCompMaxVal);
+#ifdef MOD_MIDI_SLOT_TRIGGER
+    midiSlotTriggerCheckConfig();
+#endif
 
     // VALUES CHECK  --------------------
     if (mtConfig.values.padsLightBack > 31)
@@ -521,6 +527,9 @@ void resetConfig()
     mtConfig.midi.ccInChannel = 0;
     mtConfig.midi.middleC = 2;
     mtConfig.midi.slaveClockComp = kExternalClockCompDefaultVal;
+#ifdef MOD_MIDI_SLOT_TRIGGER
+    midiSlotTriggerResetConfig();
+#endif
 
     // values ----------------------------------------
     mtConfig.values.padsLightBack = PADS_LIGHT_BACK_DEFAULT;
@@ -595,6 +604,9 @@ void recoverConfigFromOldVerison()
     configManager->readData(36, ((uint8_t*)&mtConfig.audioCodecConfig) + 2, 13);
     configManager->readData(52, ((uint8_t*)&mtConfig.firmware) + 2, 5);
     configManager->readData(57, ((uint8_t*)&mtConfig.midi) + 2, 18);
+#ifdef MOD_MIDI_SLOT_TRIGGER
+    mtConfig.midi.slotTrigMagic = 0; // old-format read can spill into the new bytes; force defaults
+#endif
     configManager->readData(76, ((uint8_t*)&mtConfig.values) + 2, 151);
     configManager->readData(228, ((uint8_t*)&mtConfig.general) + 2, 10);
     configManager->readData(238, ((uint8_t*)&mtConfig.interface) + 2, 1);
