@@ -1299,6 +1299,13 @@ void Sequencer::setSelectionNote(int16_t value)
                     mtProject.values.lastUsedInstrument = step->instrument;
                 }
                 step->note = value;
+#ifdef MOD_STEP_ENTRY_DIVISION
+                {
+                    const int16_t entryMicro = stepEntryMicromoveFor(s);
+                    if (entryMicro >= 0)
+                        step->micromove = entryMicro;
+                }
+#endif
 
                 somethingWasChanged = true;
             }

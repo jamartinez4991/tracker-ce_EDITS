@@ -1730,6 +1730,15 @@ void cPatternEditor::showActionButtonPage4Labels()
     display.setControlText(label[1], "Microtiming");
     used[0] = used[1] = true;
 #endif
+#ifdef MOD_REALTIME_QUANTIZE
+    display.setControlText(label[2], "Quant");
+    display.setControlText(label[3], "Q.Str");
+    used[2] = used[3] = true;
+#endif
+#ifdef MOD_STEP_ENTRY_DIVISION
+    display.setControlText(label[4], "SQnt");
+    used[4] = true;
+#endif
 #ifdef MOD_MASTER_MULTIPLIER
     display.setControlText(label[5], "Multiplier");
     used[5] = true;
@@ -1780,6 +1789,27 @@ void cPatternEditor::showPage4Values()
     display.setControlText2(label[1], sequencer.getLiveRecMicrotiming() ? "ON" : "OFF");
     display.refreshControl(label[0]);
     display.refreshControl(label[1]);
+#endif
+#ifdef MOD_REALTIME_QUANTIZE
+    {
+        // inactive (dimmed) while Microtiming Detection is off; the values are kept
+        const bool active = sequencer.getLiveRecMicrotiming();
+        sprintf(sQuant, "%s", rtq::kDivisionLabel[sequencer.getQuantDivision()]);
+        sprintf(sStr, "%d%%", sequencer.getQuantStrength());
+        display.setControlText2(label[2], sQuant);
+        display.setControlText2(label[3], sStr);
+        const auto colors = active ? display.getTheme().activeButtonLabelsColors
+                                   : display.getTheme().inactiveButtonLabelsColors;
+        display.setControlColors(label[2], colors);
+        display.setControlColors(label[3], colors);
+        display.refreshControl(label[2]);
+        display.refreshControl(label[3]);
+    }
+#endif
+#ifdef MOD_STEP_ENTRY_DIVISION
+    sprintf(sEntry, "%s", rtq::kDivisionLabel[sequencer.getStepEntryDivision()]);
+    display.setControlText2(label[4], sEntry);
+    display.refreshControl(label[4]);
 #endif
 #ifdef MOD_MASTER_MULTIPLIER
     sprintf(sMult, "x%d", Sequencer::getPatternMultiplier(sequencer.getPatternToUI()));

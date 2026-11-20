@@ -9,6 +9,9 @@
 #include "mtAudioEngine.h"
 #include "mtSequencer.h"
 #include "mtStructs.h"
+#ifdef MOD_REALTIME_QUANTIZE
+#include "rtQuantize.h"
+#endif
 #include "sampleRecorder/sampleRecorder.h"
 
 #include "configEditor/configEditor.h"
@@ -2717,6 +2720,46 @@ uint8_t Sequencer::getDestRecordingStep(uint8_t track, bool quantize, bool noteO
     return destPos;
 }
 
+#ifdef MOD_REALTIME_QUANTIZE
+// Note-On: quantize the performed position (absolute microsteps inside the pattern) with the
+// session division/strength. Returns the destination step; adjOut is the applied shift in microsteps
+// (kept for the matching Note-Off), micromoveOut the step micromove value (0..100).
+uint8_t Sequencer::quantizedNoteOnPosition(uint8_t track, int16_t& adjOut, int16_t& micromoveOut)
+{
+    const int32_t patternMicro = (getActualPattern()->track[0].length + 1) * rtq::kMicrostepsPerStep;
+    int32_t uStep = player.track[track].uStep;
+    uStep = uStep < 1 ? 1 : (uStep > 48 ? 48 : uStep);
+    const int32_t P = player.track[track].actual_pos * rtq::kMicrostepsPerStep + (uStep - 1);
+    int32_t R = rtq::quantize(P, sessionQuantDivision, sessionQuantStrength);
+    adjOut = (int16_t)(R - P);
+    R %= patternMicro; // a grid point past the end wraps to the pattern start, like stock
+    micromoveOut = (int16_t)rtq::toMicromove(R % rtq::kMicrostepsPerStep);
+    return (uint8_t)(R / rtq::kMicrostepsPerStep);
+}
+
+// Note-Off: the release keeps the Note-On adjustment (never snapped on its own grid). Keeps the stock
+// guard that Note-On and Note-Off never share an integer step. micromoveOut = -1 -> write none.
+uint8_t Sequencer::quantizedNoteOffPosition(uint8_t track, int16_t& micromoveOut)
+{
+    const int32_t patternMicro = (getActualPattern()->track[0].length + 1) * rtq::kMicrostepsPerStep;
+    int32_t uStep = player.track[track].uStep;
+    uStep = uStep < 1 ? 1 : (uStep > 48 ? 48 : uStep);
+    int32_t R = player.track[track].actual_pos * rtq::kMicrostepsPerStep + (uStep - 1) +
+                player.track[track].recQuantAdj;
+    R %= patternMicro;
+    if (R < 0)
+        R += patternMicro;
+    uint8_t step = (uint8_t)(R / rtq::kMicrostepsPerStep);
+    micromoveOut = (int16_t)rtq::toMicromove(R % rtq::kMicrostepsPerStep);
+    if (step == player.track[track].recNoteOnStepIdx)
+    {
+        step = (uint8_t)((step + 1) % (getActualPattern()->track[0].length + 1));
+        micromoveOut = -1;
+    }
+    return step;
+}
+#endif
+
 uint8_t Sequencer::recMicrotiming()
 {
     return mtConfig.general.recOptions == recOptions_microtimingAndVelocity ||
@@ -2870,7 +2913,16 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
 #else
             const bool trMicro = recMicrotiming();
 #endif
+#ifdef MOD_REALTIME_QUANTIZE
+            const bool trQuant = trMicro && !isAnticipatedBeat1;
+            int16_t trQuantAdj = 0;
+            int16_t trQuantMicro = 0;
+            uint8_t destinationStep =
+              trQuant ? quantizedNoteOnPosition(tr, trQuantAdj, trQuantMicro)
+                      : (isAnticipatedBeat1 ? 0 : getDestRecordingStep(tr, !trMicro));
+#else
             uint8_t destinationStep = isAnticipatedBeat1 ? 0 : getDestRecordingStep(tr, !trMicro);
+#endif
 
             strPattern::strTrack::strStep* step = &currentPattern->track[tr].step[destinationStep];
 
@@ -2933,9 +2985,20 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
                     player.track[tr].recCapMicrotiming = trMicro;
                     player.track[tr].recCapNoteOff = trNoteOff;
 #endif
+#ifdef MOD_REALTIME_QUANTIZE
+                    player.track[tr].recQuantApplied = trQuant;
+                    player.track[tr].recQuantAdj = trQuantAdj;
+#endif
 
                     if (trMicro)
                     {
+#ifdef MOD_REALTIME_QUANTIZE
+                        if (trQuant)
+                            step->micromove = clamp<int>(trQuantMicro,
+                                                         getFxMin(fx.FX_TYPE_MICROMOVE),
+                                                         getFxMax(fx.FX_TYPE_MICROMOVE));
+                        else
+#endif
                         step->micromove =
                           isAnticipatedBeat1
                             ? 0
@@ -3007,6 +3070,9 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
                 player.track[trackIdx].noteOpen = 1;
                 player.track[trackIdx].noteLength = -1;
                 player.track[trackIdx].recOpen = true;
+#ifdef MOD_REALTIME_QUANTIZE
+                player.track[trackIdx].recQuantApplied = false; // play-mode note: no pattern note to pair
+#endif
                 player.track[trackIdx].noteSource = source;
 
                 player.track[trackIdx].stepSent.note = note;
@@ -3044,6 +3110,13 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
                     newFileManager.storePatternUndoRevision();
 
                     step->note = note;
+#ifdef MOD_STEP_ENTRY_DIVISION
+                    {
+                        const int16_t entryMicro = stepEntryMicromoveFor(sel->firstStep);
+                        if (entryMicro >= 0)
+                            step->micromove = entryMicro;
+                    }
+#endif
                     step->instrument = changeInstrumentInSpecificOrder(
                       mtProject.values.lastUsedInstrument, 0, !isSampleTrack(trackIdx));
 
@@ -3163,8 +3236,16 @@ void Sequencer::handleNoteOff(byte channel, // pochodzenie grida np. GRID_OUTSID
 
                     if (wasRecOpen && !padInstrumentEdit && !player.preRecMetronomeActive)
                     {
+#ifdef MOD_REALTIME_QUANTIZE
+                        int16_t offMicro = -2; // -2: stock rule
+                        uint8_t destinationStep =
+                          player.track[tr].recQuantApplied
+                            ? quantizedNoteOffPosition(tr, offMicro)
+                            : getDestRecordingStep(tr, !recMicroFor(tr), true);
+#else
                         uint8_t destinationStep =
                           getDestRecordingStep(tr, !recMicroFor(tr), true);
+#endif
                         strPattern::strTrack::strStep* step =
                           &currentPattern->track[tr].step[destinationStep];
 
@@ -3175,6 +3256,16 @@ void Sequencer::handleNoteOff(byte channel, // pochodzenie grida np. GRID_OUTSID
 
                             step->note = STEP_NOTE_OFF_DEFAULT;
 
+#ifdef MOD_REALTIME_QUANTIZE
+                            if (offMicro != -2)
+                            {
+                                if (offMicro >= 0)
+                                    step->micromove = clamp<int>(offMicro,
+                                                                 getFxMin(fx.FX_TYPE_MICROMOVE),
+                                                                 getFxMax(fx.FX_TYPE_MICROMOVE));
+                            }
+                            else
+#endif
                             if (recMicroFor(tr) && destinationStep == player.track[tr].actual_pos)
                             {
                                 step->micromove =
@@ -3192,7 +3283,14 @@ void Sequencer::handleNoteOff(byte channel, // pochodzenie grida np. GRID_OUTSID
             liveRecHeldNotesCount = 0;
             for (uint8_t tr = 0; tr < kAllTracks; tr++)
             {
+#ifdef MOD_REALTIME_QUANTIZE
+                int16_t offMicro = -2; // -2: stock rule
+                uint8_t destinationStep = player.track[tr].recQuantApplied && player.track[tr].recOpen
+                                            ? quantizedNoteOffPosition(tr, offMicro)
+                                            : getDestRecordingStep(tr, !recMicroFor(tr), true);
+#else
                 uint8_t destinationStep = getDestRecordingStep(tr, !recMicroFor(tr), true);
+#endif
                 bool shouldOff = (player.track[tr].recOpen || player.track[tr].noteOpen) &&
                                  player.track[tr].stepSent.note == note;
 
@@ -3247,6 +3345,16 @@ void Sequencer::handleNoteOff(byte channel, // pochodzenie grida np. GRID_OUTSID
 
                             step->note = STEP_NOTE_OFF_DEFAULT;
 
+#ifdef MOD_REALTIME_QUANTIZE
+                            if (offMicro != -2)
+                            {
+                                if (offMicro >= 0)
+                                    step->micromove = clamp<int>(offMicro,
+                                                                 getFxMin(fx.FX_TYPE_MICROMOVE),
+                                                                 getFxMax(fx.FX_TYPE_MICROMOVE));
+                            }
+                            else
+#endif
                             if (recMicroFor(tr) && destinationStep == player.track[tr].actual_pos)
                             {
                                 step->micromove =

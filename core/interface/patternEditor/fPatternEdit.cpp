@@ -993,6 +993,39 @@ void cPatternEditor::focusOnActual()
       clamp<int8_t>(trackerPattern.firstVisibleTrack, 0, kAllTracks - columnCounts);
 }
 
+#ifdef MOD_STEP_ENTRY_DIVISION
+// Distance (in steps) from actualStep to the next Step Entry Division grid point. 1/16 keeps the
+// stock Step Jump behaviour ('fallback'). Fractional divisions (triplets) are tracked in microsteps
+// so they alternate 2,3,3 / 1,1,2 ... steps instead of drifting; moving the cursor by hand resyncs.
+int cPatternEditor::stepEntryDelta(int patternLength, int actualStep, int fallback)
+{
+    const int division = sequencer.getStepEntryDivision();
+    if (division == rtq::kDefaultDivision)
+    {
+        stepEntryStep = -1;
+        sequencer.setStepEntryFraction(-1, 0);
+        return fallback;
+    }
+    const int steps = patternLength + 1;
+    if (stepEntryStep != actualStep)
+        stepEntryMicro = actualStep * rtq::kMicrostepsPerStep;
+
+    int32_t next = rtq::nextEntryPosition(stepEntryMicro, division, actualStep);
+    next %= steps * rtq::kMicrostepsPerStep;
+    const int newStep = next / rtq::kMicrostepsPerStep;
+
+    stepEntryMicro = next;
+    stepEntryStep = newStep;
+    // the next note entered at newStep is placed at this fractional offset (microtiming)
+    sequencer.setStepEntryFraction(newStep, next % rtq::kMicrostepsPerStep);
+
+    int delta = newStep - actualStep;
+    if (delta <= 0)
+        delta += steps;
+    return delta;
+}
+#endif
+
 void cPatternEditor::moveCursorByStep()
 {
     moveCursorByStep(0);
@@ -1000,21 +1033,29 @@ void cPatternEditor::moveCursorByStep()
 
 void cPatternEditor::moveCursorByStep(uint8_t val)
 {
-    if (mtProject.values.patternEditStep + val <= 0)
+    int stepSize = mtProject.values.patternEditStep;
+#ifdef MOD_STEP_ENTRY_DIVISION
+    // Step Entry Division != 1/16 replaces the Step Jump interval (the stored value is not touched)
+    if (val == 0)
+        stepSize = stepEntryDelta(sequencer.getPatternToUI()->track[0].length,
+                                  trackerPattern.actualStep,
+                                  stepSize);
+#endif
+    if (stepSize + val <= 0)
         return;
 
     int16_t patternLength = sequencer.getPatternToUI()->track[0].length;
 
-    if (trackerPattern.actualStep + mtProject.values.patternEditStep + val <= patternLength)
+    if (trackerPattern.actualStep + stepSize + val <= patternLength)
     {
-        trackerPattern.actualStep += mtProject.values.patternEditStep + val;
+        trackerPattern.actualStep += stepSize + val;
     }
     else
     {
         // The move can be longer than the pattern, as after pasting a tall block into a
         // short pattern, so wrapping once is not enough.
         trackerPattern.actualStep =
-          (trackerPattern.actualStep + mtProject.values.patternEditStep + val) %
+          (trackerPattern.actualStep + stepSize + val) %
           (patternLength + 1);
     }
 
@@ -1031,19 +1072,24 @@ void cPatternEditor::moveCursorByStepParallel()
         return;
     }
 
-    if (mtProject.values.patternEditStep <= 0)
+    int stepSize = mtProject.values.patternEditStep;
+#ifdef MOD_STEP_ENTRY_DIVISION
+    stepSize = stepEntryDelta(
+      sequencer.getPatternToUI()->track[0].length, trackerPattern.actualStep, stepSize);
+#endif
+    if (stepSize <= 0)
         return;
 
     int16_t patternLength = sequencer.getPatternToUI()->track[0].length;
 
-    if (trackerPattern.actualStep + mtProject.values.patternEditStep <= patternLength)
+    if (trackerPattern.actualStep + stepSize <= patternLength)
     {
-        trackerPattern.actualStep += mtProject.values.patternEditStep;
+        trackerPattern.actualStep += stepSize;
     }
     else
     {
         trackerPattern.actualStep =
-          (trackerPattern.actualStep + mtProject.values.patternEditStep) % (patternLength + 1);
+          (trackerPattern.actualStep + stepSize) % (patternLength + 1);
     }
     PTE->trackerPattern.selectStartStep = trackerPattern.actualStep;
     PTE->trackerPattern.selectEndStep = trackerPattern.actualStep;
@@ -5397,10 +5443,35 @@ static void page4Hold(uint8_t state)
     }
 }
 
+#ifdef MOD_REALTIME_QUANTIZE
+// Quantize Division / Strength only act while Microtiming Detection is on; their values are kept.
+static bool page4QuantActive()
+{
+    return sequencer.getLiveRecMicrotiming();
+}
+#endif
+
 static void page4Adjust(int delta)
 {
     switch (PTE->selectedPlace)
     {
+#ifdef MOD_REALTIME_QUANTIZE
+        case kP4Quant:
+            if (page4QuantActive())
+                sequencer.setQuantDivision((sequencer.getQuantDivision() + (delta > 0 ? 1 : 5)) % 6);
+            break;
+        case kP4QStr:
+            if (page4QuantActive())
+                sequencer.setQuantStrength(
+                  clamp<int>((int)sequencer.getQuantStrength() + delta, 0, 100));
+            break;
+#endif
+#ifdef MOD_STEP_ENTRY_DIVISION
+        case kP4SQnt:
+            sequencer.setStepEntryDivision((sequencer.getStepEntryDivision() + (delta > 0 ? 1 : 5)) % 6);
+            PTE->stepEntryStep = -1; // resync the entry cursor
+            break;
+#endif
 #ifdef MOD_MASTER_MULTIPLIER
         case kP4Mult: PTE->changeActualPatternMultiplier(delta > 0 ? 1 : -1); break;
 #endif
@@ -5440,6 +5511,25 @@ static void page4Pad(uint8_t pad)
 {
     switch (PTE->selectedPlace)
     {
+#ifdef MOD_REALTIME_QUANTIZE
+        case kP4Quant:
+            if (page4QuantActive() && pad < 6)
+                sequencer.setQuantDivision(pad);
+            break;
+        case kP4QStr:
+            if (page4QuantActive())
+                sequencer.setQuantStrength(mapClamped<int>(pad, 0, interfacePadsCount - 1, 0, 100));
+            break;
+#endif
+#ifdef MOD_STEP_ENTRY_DIVISION
+        case kP4SQnt:
+            if (pad < 6)
+            {
+                sequencer.setStepEntryDivision(pad);
+                PTE->stepEntryStep = -1;
+            }
+            break;
+#endif
 #ifdef MOD_MASTER_MULTIPLIER
         case kP4Mult:
             if (pad < Sequencer::kMasterMultiplierMax)
@@ -5470,6 +5560,17 @@ static void page4Light()
     int pad = -1;
     switch (PTE->selectedPlace)
     {
+#ifdef MOD_REALTIME_QUANTIZE
+        case kP4Quant: pad = page4QuantActive() ? sequencer.getQuantDivision() : -1; break;
+        case kP4QStr:
+            pad = page4QuantActive()
+                    ? mapClamped<int>(sequencer.getQuantStrength(), 0, 100, 0, interfacePadsCount - 1)
+                    : -1;
+            break;
+#endif
+#ifdef MOD_STEP_ENTRY_DIVISION
+        case kP4SQnt: pad = sequencer.getStepEntryDivision(); break;
+#endif
 #ifdef MOD_MASTER_MULTIPLIER
         case kP4Mult: pad = Sequencer::getPatternMultiplier(sequencer.getPatternToUI()) - 1; break;
 #endif
@@ -5500,6 +5601,13 @@ void cPatternEditor::setActionButtonPage4Funct()
 #ifdef MOD_LIVE_REC_TOGGLES
     ip->setButtonObj(interfaceButton0, buttonPress, functToggleNoteOffDetection);
     ip->setButtonObj(interfaceButton1, buttonPress, functToggleRecMicrotiming);
+#endif
+#ifdef MOD_REALTIME_QUANTIZE
+    ip->setButtonObj(interfaceButton2, page4Hold<kP4Quant>);
+    ip->setButtonObj(interfaceButton3, page4Hold<kP4QStr>);
+#endif
+#ifdef MOD_STEP_ENTRY_DIVISION
+    ip->setButtonObj(interfaceButton4, page4Hold<kP4SQnt>);
 #endif
 #ifdef MOD_MASTER_MULTIPLIER
     ip->setButtonObj(interfaceButton5, page4Hold<kP4Mult>);
