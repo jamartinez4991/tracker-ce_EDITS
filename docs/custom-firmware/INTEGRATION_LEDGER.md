@@ -131,7 +131,7 @@ Not done for any feature: hardware validation, audio-thread timing measurement, 
 * Pattern files saved by flag-on builds are v7/v8 and unreadable by stock; instrument v10 likewise.
 * `tests/boundary.cpp` is a host model of the master boundary decision, not an execution of firmware code.
 * Records in `build-results.tsv` currently come from a local xPack GCC 10.3.1; CI uses the ARM 10.3-2021.10 toolchain (same GCC 10.3.1), so counts may differ slightly — compare within one toolchain.
-* The existing `build.yml` (inherited from upstream) fails PRs whose commits carry an AI `Co-authored-by` trailer.
+* The existing `build.yml` (inherited from upstream, unchanged here, with its own write permissions and PR comments) fails PRs whose commits carry an AI `Co-authored-by` trailer.
 
 ## Decisions
 
@@ -149,4 +149,5 @@ Not done for any feature: hardware validation, audio-thread timing measurement, 
 | Mono sampling Plus/Mini only | Open: enable on Original? |
 | SRR/DJ per-channel processing | Needed for upstream's null-silence graph |
 | Slot-trigger Microtiming | Follows the global setting (see limitations) |
+| `features.tsv` is the authoritative registry | A feature PR branch must be registered or validation fails; infrastructure branches use `infra/*` (`tools/cfw/infra-branches.txt`) |
 | A clean Git merge is not proof of correctness | Compare against `custom-firmware` for missing glue |

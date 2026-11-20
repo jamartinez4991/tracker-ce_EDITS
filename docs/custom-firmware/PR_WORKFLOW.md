@@ -76,8 +76,30 @@ Concise, and explicit about what was *not* tested:
   against `main` before merging the parent.
 * Keep infrastructure changes out of feature PRs and feature changes out of infrastructure PRs.
 
+## Feature registration and CI
+
+`tools/cfw/features.tsv` is the authoritative registry; nothing is guessed from branch names or flags.
+
+| Situation | PR validation result |
+|---|---|
+| PR branch registered in `features.tsv`, not yet in `main` | stock, merged, `<feature>` (with its dependencies) and `merged+<feature>`, each on Plus, Original and Mini (12 builds) |
+| PR branch **not** registered and not an infrastructure branch | **fails** at the `plan` job with a clear error; no build job runs, so it cannot go green without its feature being compiled |
+| Infrastructure PR: branch matches a pattern in `tools/cfw/infra-branches.txt` (currently `infra/*`) | stock and merged only (6 builds); no feature flags to test |
+| Registered branch whose feature is already `in_main=y` | fails (stale registry or wrong branch) |
+| Manual dispatch with a registered `feature` input | same as a registered PR |
+| Manual dispatch with the input empty | stock and merged only |
+| Manual dispatch with an unregistered feature name | fails |
+
+So a new feature PR must first add its row to `features.tsv` (a reviewed change); infrastructure-only work uses an `infra/…`
+branch name, and a new kind of infrastructure branch needs a reviewed addition to `infra-branches.txt`.
+Helper scripts are covered by `tools/cfw/tests/run.sh`, which runs in CI (`selftest` job) and locally.
+
 ## Automation
 
-`.github/workflows/cfw-pr-validate.yml` builds the matrix for a PR and checks the stock regression;
-`cfw-integration.yml` validates `main` after merges. Both are read-only (`contents: read`): they never merge, rebase,
-push, comment or close anything. CI is evidence for Stage C, not a replacement for Stages A, B and D.
+The two workflows added for this process, `.github/workflows/cfw-pr-validate.yml` and `cfw-integration.yml`, are
+read-only: `contents: read`, no writes, no comments, they never merge, rebase, push or close anything. The repository
+also has the inherited upstream `.github/workflows/build.yml` and others, which have their own permissions and behaviour
+(including write access and PR comments); they are not covered by this statement and are not changed by the CFW
+infrastructure. `cfw-integration.yml` prints `conflicts.sh` informationally; `conflicts.sh --strict` (non-zero exit on any
+missing, unmergeable or conflicting open branch) is available for local or future gating. CI is evidence for Stage C, not
+a replacement for Stages A, B and D.

@@ -11,7 +11,7 @@ case "$target" in plus|original|mini) ;; *) echo "bad target $target" >&2; exit 
 root="$(git rev-parse --show-toplevel)"; cd "$root"
 tc_args=(); [ -n "${TOOLCHAIN:-}" ] && tc_args=("TOOLCHAIN=$TOOLCHAIN")
 gcc="${TOOLCHAIN:-$( [ -x agt/10.3/bin/arm-none-eabi-gcc ] && echo "$root/agt/10.3/bin/arm-none-eabi-" || echo arm-none-eabi-)}gcc"
-tcver="$("$gcc" --version 2>/dev/null | head -1 || echo unknown)"
+tcver="$("$gcc" --version 2>/dev/null | head -1 || true)"; [ -n "$tcver" ] || tcver=unknown
 log="$(mktemp)"
 make clean >/dev/null 2>&1 || true
 if make "$target" "${tc_args[@]}" CUSTOM_DEFINES="$flags" -j"${JOBS:-$(nproc)}" >"$log" 2>&1; then res=OK; else res=FAIL; fi

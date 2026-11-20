@@ -3,7 +3,7 @@
 # Prints the -D flags for the given features plus everything they depend on (from features.tsv).
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
-tsv="$here/features.tsv"
+tsv="${CFW_FEATURES:-$here/features.tsv}"
 [ $# -ge 1 ] || { echo "usage: flags.sh <feature>... | --merged | --stock" >&2; exit 2; }
 if [ "$1" = "--stock" ]; then echo ""; exit 0; fi
 if [ "$1" = "--merged" ]; then set -- $(awk -F'\t' 'NR>1 && $7=="y"{print $1}' "$tsv"); fi

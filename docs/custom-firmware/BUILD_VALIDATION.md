@@ -62,6 +62,8 @@ tools/cfw/build.sh plus "$(tools/cfw/flags.sh step-jump)" step-jump
 `date  commit  srchash  target  flags  toolchain  result  errors  warnings  config-name`.
 `tools/cfw/report.sh build-results.tsv` renders the records as a Markdown table.
 
+Self-tests for the helper scripts: `tools/cfw/tests/run.sh` (no toolchain needed).
+
 Host tests: `tools/cfw/hosttests.sh` compiles and runs every `tests/*.cpp` and `tests/*/*.cpp`.
 
 ## Which configurations to build
@@ -75,7 +77,8 @@ Chosen from `features.tsv`, not by enumerating flag combinations (`tools/cfw/mat
 | `<feature>` | the feature plus its declared dependencies | The feature on its own |
 | `merged+<feature>` | `merged` plus the PR's feature | Interaction with everything already merged |
 
-Each is built for `plus`, `original` and `mini`. When a PR touches code that two unmerged features share (see the
+Each is built for `plus`, `original` and `mini`. A PR branch must be registered in `features.tsv` (or be an
+`infra/*` branch) or validation fails; see "Feature registration and CI" in `PR_WORKFLOW.md`. When a PR touches code that two unmerged features share (see the
 shared-code table in the ledger), add the specific pair by hand and say why in the PR report.
 
 ## Stock regression
@@ -100,12 +103,14 @@ Plus 394, Original 2726, Mini 301.
 
 `tools/cfw/reuse.sh <target> "<flags>"` answers this. A record is reusable only if **all** of these match:
 
-1. `srchash` – hash of the firmware source tree (`tools/cfw/srchash.sh`: file hashes under `core platforms synth
+1. `srchash` – hash of the **committed** firmware source tree (uncommitted edits are not seen — commit before building) (`tools/cfw/srchash.sh`: file hashes under `core platforms synth
    editor-fx-sdk synth-plugin-sdk util Makefile version.mk`). Docs, tests, workflows and tools are excluded, so a
    docs-only commit does not invalidate builds.
 2. target,
 3. flag set (order-insensitive),
-4. toolchain version string,
+4. toolchain version string, taken from the same compiler `build.sh` would use (`$TOOLCHAIN`, else `agt/10.3`,
+   else `arm-none-eabi-gcc` on `PATH`). If the compiler cannot be run, the version is unverifiable and **nothing is
+   reused**,
 5. result was `OK`.
 
 Anything else — a rebase, a new commit touching firmware paths, a different toolchain — means the old record no longer

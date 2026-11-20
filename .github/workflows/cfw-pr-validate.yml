@@ -8,6 +8,11 @@ name: CFW PR validation
 on:
   pull_request:
   workflow_dispatch:
+    inputs:
+      feature:
+        description: "Registered feature name from tools/cfw/features.tsv (empty = stock + merged only)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -25,8 +30,26 @@ jobs:
       - uses: actions/checkout@v4
       - id: m
         env:
-          HEAD_REF: ${{ github.head_ref || github.ref_name }}
-        run: echo "matrix=$(python3 tools/cfw/matrix.py --pr "$HEAD_REF")" >> "$GITHUB_OUTPUT"
+          EVENT: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          FEATURE_INPUT: ${{ github.event.inputs.feature }}
+        run: |
+          # Fails (and so blocks every build job) for an unregistered feature branch; see tools/cfw/matrix.py.
+          if [ "$EVENT" = workflow_dispatch ]; then
+            m="$(python3 tools/cfw/matrix.py --dispatch "$FEATURE_INPUT")"
+          else
+            m="$(python3 tools/cfw/matrix.py --pr "$HEAD_REF")"
+          fi
+          echo "matrix=$m" >> "$GITHUB_OUTPUT"
+
+  selftest:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: CFW helper self-tests
+        run: tools/cfw/tests/run.sh
 
   host-tests:
     runs-on: ubuntu-22.04
