@@ -37,6 +37,14 @@ constexpr uint8_t undoCount = 5;
 
 // MOD_RECORDER_FORMAT (see features/recorder-format): makes the Format value visible under its
 // caption (two-line label) and shows the effective format. Requires MOD_MONO_SAMPLING.
+#ifdef MOD_RECORDER_FORMAT
+#ifndef MOD_MONO_SAMPLING
+#error "MOD_RECORDER_FORMAT requires MOD_MONO_SAMPLING"
+#endif
+#ifdef MOD_MONO_SAMPLING_ACTIVE
+#define MOD_RECORDER_FORMAT_ACTIVE 1
+#endif
+#endif
 
 struct strRecorderConfig
 {
