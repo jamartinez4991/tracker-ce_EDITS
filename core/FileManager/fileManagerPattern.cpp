@@ -420,6 +420,14 @@ void cFileManager::checkVersionAndTranslate(Sequencer::strPattern* pattern)
             pattern->rezerwa1 = 0;
         }
 #endif
+#ifdef MOD_PATTERN_BPM
+        // v7 -> v8: rezerwa2/3 are now the Pattern BPM. Older files never defined them: OFF.
+        if (pattern->header.fileStructureVersion[0] < 8)
+        {
+            pattern->rezerwa2 = 0;
+            pattern->rezerwa3 = 0;
+        }
+#endif
 
         for (uint8_t i = 0; i < 4; i++)
         {

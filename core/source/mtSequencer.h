@@ -960,6 +960,20 @@ class Sequencer
         player.preRollMetronomeEndCalback = preRollMetronomeEndCalback;
     };
 
+#ifdef MOD_PATTERN_BPM
+    // Per-pattern BPM, stored in strPattern::rezerwa2/rezerwa3 (little endian). 0 = OFF (use Project BPM).
+    static constexpr uint16_t kPatternBpmMin = 10;
+    static constexpr uint16_t kPatternBpmMax = 400;
+    static uint16_t getPatternBpm(const strPattern* p) { return p->rezerwa2 | (p->rezerwa3 << 8); }
+    static void setPatternBpm(strPattern* p, uint16_t v)
+    {
+        if (v != 0)
+            v = v < kPatternBpmMin ? kPatternBpmMin : (v > kPatternBpmMax ? kPatternBpmMax : v);
+        p->rezerwa2 = v & 0xFF;
+        p->rezerwa3 = v >> 8;
+    }
+#endif
+
   private:
     static constexpr int kTicksInStep = 576;
     static constexpr size_t kExternalTempoCounterSize = 24 * 2;
