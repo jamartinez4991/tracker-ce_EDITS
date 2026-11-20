@@ -9,6 +9,9 @@
 #include "mtAudioEngine.h"
 #include "mtSequencer.h"
 #include "mtStructs.h"
+#ifdef MOD_COND_CHANCE
+#include "condChance.h"
+#endif
 #include "sampleRecorder/sampleRecorder.h"
 
 #include "configEditor/configEditor.h"
@@ -381,6 +384,11 @@ AUDIO_CORE_RAM void Sequencer::play_microStep(int row)
 
     if (!playerRow.isActive)
         return;
+#ifdef MOD_COND_CHANCE
+    // Cond. Chance is control flow: its encounter phase advances even on a muted track
+    if (playerRow.uStep == 1)
+        evaluateCondChanceControl(row);
+#endif
 #ifdef MOD_STEP_JUMP
     // control-flow pass: must run before the mute return so jumps keep working on muted tracks
     if (playerRow.uStep == 1)
@@ -457,6 +465,20 @@ AUDIO_CORE_RAM void Sequencer::play_microStep(int row)
 
                     break;
 
+#ifdef MOD_COND_CHANCE
+                case fx.FX_TYPE_COND_CHANCE:
+                    // decision was made once by the control pass; gate the step like Chance does
+                    killFxOnSlot(row, fxIndex);
+                    atLeastOneFx = 1;
+                    if (playerRow.condDecided && !playerRow.condFired)
+                    {
+                        playerRow.cancelStep = 1;
+#ifdef MOD_STEP_JUMP
+                        playerRow.pendingJumpValid = false; // failed Cond. Chance suppresses the jump
+#endif
+                    }
+                    break;
+#endif
             }
         }
 
@@ -1821,6 +1843,9 @@ void Sequencer::switchRowStep(uint8_t row) // przełączamy stepy w zależności
         trackLength = player.performance.patternLength;
     }
 
+#ifdef MOD_COND_CHANCE
+    player.track[row].stepSerial++; // new step encounter for this track
+#endif
     player.endOfPattern = false;
     switch (playMode)
     {
@@ -2295,10 +2320,67 @@ AUDIO_CORE_RAM void Sequencer::resetChanceState(void)
         player.track[row].passCount = 0;
         player.track[row].lastCondFired = true;
     }
+#ifdef MOD_COND_CHANCE
+    resetCondChanceState();
+#endif
 #ifdef MOD_STEP_JUMP
     discardPendingStepJumps(); // play / playSelection / stop / pre-roll
 #endif
 }
+
+#ifdef MOD_COND_CHANCE
+AUDIO_CORE_RAM void Sequencer::resetCondChanceState()
+{
+    for (int row = 0; row < kAllTracks; row++)
+        resetCondChanceState(row);
+}
+
+AUDIO_CORE_RAM void Sequencer::resetCondChanceState(uint8_t row)
+{
+    assert(row < kAllTracks);
+    memset(player.track[row].condPhase, 0, sizeof(player.track[row].condPhase));
+    player.track[row].condDecided = false;
+    player.track[row].condFired = true;
+    player.track[row].condEvalSerial = 0xFFFFFFFFu;
+}
+
+// Step-start control pass (uStep == 1, on the stepToSend snapshot). Evaluates the first Cond. Chance
+// on the step (column 2 before column 1, like Chance). Idempotent per step encounter: the serial is
+// bumped at every step boundary, so a repeated uStep==1 for the same encounter can never advance the
+// counting phase twice.
+AUDIO_CORE_RAM void Sequencer::evaluateCondChanceControl(uint8_t row)
+{
+    strPlayer::strPlayerTrack& playerRow = player.track[row];
+    if (playerRow.condEvalSerial == playerRow.stepSerial)
+        return;
+    playerRow.condEvalSerial = playerRow.stepSerial;
+    playerRow.condDecided = false;
+
+    for (int8_t fxIndex = 1; fxIndex >= 0; fxIndex--)
+    {
+        const auto& f = playerRow.stepToSend.fx[fxIndex];
+        if (f.type != fx.FX_TYPE_COND_CHANCE)
+            continue;
+
+        const condChance::Decoded d = condChance::decode(f.value);
+        bool pass = true;
+        if (d.counted)
+        {
+            if (playerRow.actual_pos < sizeof(playerRow.condPhase))
+                pass = condChance::countedPasses(d, playerRow.condPhase[playerRow.actual_pos]);
+        }
+        else
+        {
+            // plain percentage: one roll per encounter
+            pass = condChance::gatePasses(d, (uint8_t)utilMathRandom::random(0, 100));
+        }
+        playerRow.condFired = pass;
+        playerRow.condDecided = true;
+        playerRow.lastCondFired = playerRow.condFired;
+        break; // first Cond. Chance only
+    }
+}
+#endif
 
 #ifdef MOD_STEP_JUMP
 // Runs once per step at uStep==1 on the stepToSend snapshot (so live edits apply from the next
@@ -2326,6 +2408,10 @@ AUDIO_CORE_RAM void Sequencer::evaluateStepJumpControl(uint8_t row)
         // the stock Chance pass sits behind the mute return; on a muted track evaluate it here
         // (first Chance found, same scan order) so Chance still gates the jump.
         // Unmuted tracks keep the single stock evaluation, which clears the pending jump on failure.
+#ifdef MOD_COND_CHANCE
+        if (playerRow.condDecided && !playerRow.condFired)
+            return; // Cond. Chance already evaluated (once) by evaluateCondChanceControl()
+#endif
             for (int8_t fxIndex = 1; fxIndex >= 0; fxIndex--)
             {
                 if (step.fx[fxIndex].type == fx.FX_TYPE_CHANCE)
@@ -3531,6 +3617,9 @@ void Sequencer::switchRamPatternsNow()
     if (bufferPatternIdx != player.activePatternIdx)
     {
         player.activePatternIdx = bufferPatternIdx;
+#ifdef MOD_COND_CHANCE
+        resetCondChanceState(); // new pattern: no encounter history carries over
+#endif
         for (int row = 0; row < kAllTracks; row++)
         {
             player.track[row].passCount = 0;
@@ -3597,6 +3686,9 @@ void Sequencer::switchPerformanceTrackNow(uint8_t trackToSwitch)
     setPerformanceTrackLength(trackToSwitch, track_len);
     player.track[trackToSwitch].performanceSourcePattern = -1;
     player.track[trackToSwitch].passCount = 0;
+#ifdef MOD_COND_CHANCE
+    resetCondChanceState(trackToSwitch);
+#endif
 #ifdef MOD_STEP_JUMP
     player.track[trackToSwitch].pendingJumpValid = false; // replacement wins over a pending jump
 #endif
