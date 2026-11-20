@@ -1,0 +1,7 @@
+# date	commit	srchash	target	flags	toolchain	result	errors	warnings	config
+2026-11-20	e6e4fca	3007edf9ff8c	plus	-DMOD_LAZY_CHOP -DMOD_LIVE_REC_TOGGLES -DMOD_MASTER_MULTIPLIER -DMOD_MIDI_SLOT_TRIGGER -DMOD_MONO_SAMPLING -DMOD_SAMPLE_INSTRUMENT_FX	arm-none-eabi-gcc (xPack GNU Arm Embedded GCC x86_64) 10.3.1 20210824 (release)	OK	0	397	merged
+2026-11-20	e6e4fca	3007edf9ff8c	plus	STOCK	arm-none-eabi-gcc (xPack GNU Arm Embedded GCC x86_64) 10.3.1 20210824 (release)	OK	0	394	stock
+2026-11-20	e6e4fca	3007edf9ff8c	original	-DMOD_LAZY_CHOP -DMOD_LIVE_REC_TOGGLES -DMOD_MASTER_MULTIPLIER -DMOD_MIDI_SLOT_TRIGGER -DMOD_MONO_SAMPLING -DMOD_SAMPLE_INSTRUMENT_FX	arm-none-eabi-gcc (xPack GNU Arm Embedded GCC x86_64) 10.3.1 20210824 (release)	OK	0	2729	merged
+2026-11-20	e6e4fca	3007edf9ff8c	original	STOCK	arm-none-eabi-gcc (xPack GNU Arm Embedded GCC x86_64) 10.3.1 20210824 (release)	OK	0	2726	stock
+2026-11-20	e6e4fca	3007edf9ff8c	mini	-DMOD_LAZY_CHOP -DMOD_LIVE_REC_TOGGLES -DMOD_MASTER_MULTIPLIER -DMOD_MIDI_SLOT_TRIGGER -DMOD_MONO_SAMPLING -DMOD_SAMPLE_INSTRUMENT_FX	arm-none-eabi-gcc (xPack GNU Arm Embedded GCC x86_64) 10.3.1 20210824 (release)	OK	0	301	merged
+2026-11-20	e6e4fca	3007edf9ff8c	mini	STOCK	arm-none-eabi-gcc (xPack GNU Arm Embedded GCC x86_64) 10.3.1 20210824 (release)	OK	0	301	stock

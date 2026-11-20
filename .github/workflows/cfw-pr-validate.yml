@@ -1,0 +1,123 @@
+name: CFW PR validation
+
+# Builds the configurations selected by tools/cfw/matrix.py for a custom-firmware feature PR
+# (stock, merged-features, the PR's feature + dependencies, merged + PR feature) on all three
+# devices, runs the host tests, and checks that flags-off still matches the upstream baseline.
+# Read-only: this workflow never merges, rebases, pushes or comments.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cfw-pr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    runs-on: ubuntu-22.04
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: m
+        env:
+          HEAD_REF: ${{ github.head_ref || github.ref_name }}
+        run: echo "matrix=$(python3 tools/cfw/matrix.py --pr "$HEAD_REF")" >> "$GITHUB_OUTPUT"
+
+  host-tests:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: tools/cfw/hosttests.sh
+
+  build:
+    needs: plan
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
+    name: build ${{ matrix.name }} / ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/cfw-toolchain
+      - name: Build
+        env:
+          FLAGS: ${{ matrix.flags }}
+          TARGET: ${{ matrix.target }}
+          CONFIG: ${{ matrix.name }}
+          CFW_RESULTS: ${{ runner.temp }}/result.tsv
+          CFW_LOG_DIR: ${{ runner.temp }}/logs
+          TOOLCHAIN: ${{ github.workspace }}/agt/10.3/bin/arm-none-eabi-
+        run: |
+          rc=0
+          tools/cfw/build.sh "$TARGET" "$FLAGS" "$CONFIG" || rc=$?
+          {
+            echo "### $CONFIG / $TARGET"
+            echo "Flags: \`${FLAGS:-STOCK}\`"
+            tools/cfw/report.sh "$CFW_RESULTS" || true
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: log-${{ matrix.target }}-${{ matrix.name }}
+          path: ${{ runner.temp }}/logs
+          retention-days: 14
+
+  stock-vs-upstream:
+    # Flags-off must compile exactly like the upstream baseline: same warnings, no extra ones.
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [plus, original, mini]
+    name: stock regression / ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/cfw-toolchain
+      - name: Build current tree and upstream baseline with no custom flags
+        env:
+          TARGET: ${{ matrix.target }}
+          TOOLCHAIN: ${{ github.workspace }}/agt/10.3/bin/arm-none-eabi-
+        run: |
+          . tools/cfw/baseline.env
+          CFW_LOG_DIR="$RUNNER_TEMP/cur" tools/cfw/build.sh "$TARGET" "" stock
+          git worktree add "$RUNNER_TEMP/upstream" "$UPSTREAM_BASE"
+          (cd "$RUNNER_TEMP/upstream" && CFW_LOG_DIR="$RUNNER_TEMP/up" "$GITHUB_WORKSPACE/tools/cfw/build.sh" "$TARGET" "" stock)
+          new="$(tools/cfw/newwarn.sh "$RUNNER_TEMP/up/$TARGET-stock.log" "$RUNNER_TEMP/cur/$TARGET-stock.log")"
+          {
+            echo "### Stock regression / $TARGET (vs $UPSTREAM_BASE)"
+            if [ -z "$new" ]; then echo "No warnings beyond the upstream baseline."; else echo "New warnings with all custom flags OFF:"; echo '```'; echo "$new"; echo '```'; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          [ -z "$new" ]
+
+  report:
+    needs: build
+    if: always()
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: log-*
+          path: logs
+      - name: New warnings relative to the stock build, per target
+        run: |
+          {
+            echo "## Warnings introduced by custom flags (compared with the stock build of this commit)"
+            for t in plus original mini; do
+              stock="logs/log-$t-stock/$t-stock.log"; [ -f "$stock" ] || continue
+              for f in logs/log-$t-*/*.log; do
+                [ "$f" = "$stock" ] && continue
+                n="$(tools/cfw/newwarn.sh "$stock" "$f")"
+                echo "- **$t / $(basename "$f" .log | sed "s/^$t-//")**: $( [ -z "$n" ] && echo none || echo "$(echo "$n" | wc -l) new" )"
+                [ -n "$n" ] && { echo '  ```'; echo "$n" | sed 's/^/  /'; echo '  ```'; }
+              done
+            done
+          } >> "$GITHUB_STEP_SUMMARY"

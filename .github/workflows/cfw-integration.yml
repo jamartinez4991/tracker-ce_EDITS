@@ -1,0 +1,75 @@
+name: CFW integration validation
+
+# Runs after custom features land in main: integrated build (stock + all merged features) on all
+# three devices, host tests, and a read-only dependency/conflict report for the open feature branches.
+# Never merges, rebases, pushes or comments.
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-22.04
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: m
+        run: echo "matrix=$(python3 tools/cfw/matrix.py --integrated)" >> "$GITHUB_OUTPUT"
+
+  host-tests:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: tools/cfw/hosttests.sh
+
+  build:
+    needs: plan
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
+    name: build ${{ matrix.name }} / ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/cfw-toolchain
+      - name: Build
+        env:
+          FLAGS: ${{ matrix.flags }}
+          TARGET: ${{ matrix.target }}
+          CONFIG: ${{ matrix.name }}
+          CFW_RESULTS: ${{ runner.temp }}/result.tsv
+          CFW_LOG_DIR: ${{ runner.temp }}/logs
+          TOOLCHAIN: ${{ github.workspace }}/agt/10.3/bin/arm-none-eabi-
+        run: |
+          rc=0
+          tools/cfw/build.sh "$TARGET" "$FLAGS" "$CONFIG" || rc=$?
+          { echo "### $CONFIG / $TARGET"; tools/cfw/report.sh "$CFW_RESULTS" || true; } >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: log-${{ matrix.target }}-${{ matrix.name }}
+          path: ${{ runner.temp }}/logs
+          retention-days: 14
+
+  conflicts:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Dependency and conflict report for open feature branches (informational)
+        run: |
+          {
+            echo "### Open feature branches vs main"
+            echo '```'
+            tools/cfw/conflicts.sh
+            echo '```'
+            echo "A clean merge is not proof the combined features work; see docs/custom-firmware/PR_WORKFLOW.md."
+          } >> "$GITHUB_STEP_SUMMARY"
