@@ -1356,6 +1356,9 @@ AUDIO_CORE_RAM void Sequencer::play(uint8_t fromPos)
 
     reset_actual_pos();
     resetChanceState();
+#ifdef MOD_MASTER_MULTIPLIER
+    masterTimingStart(fromPos);
+#endif
 
     player.isStop = 0;
     player.isPlay = 1;
@@ -1399,6 +1402,9 @@ void Sequencer::playSelection(bool looped) // potrzebuje aktualnego zaznaczenia
 
     reset_actual_pos();
     resetChanceState();
+#ifdef MOD_MASTER_MULTIPLIER
+    masterTimingStop(); // selection playback bypasses the multiplier
+#endif
     for (uint8_t trackIdx = 0; trackIdx < kAllTracks; trackIdx++)
     {
         player.track[trackIdx].uStep = 1;
@@ -1640,6 +1646,9 @@ void Sequencer::stop(StopContext context)
 
     reset_actual_pos();
     resetChanceState();
+#ifdef MOD_MASTER_MULTIPLIER
+    masterTimingStop();
+#endif
 
     player.tempoFx.reset();
 
@@ -1943,6 +1952,35 @@ void Sequencer::switchRowStep(uint8_t row) // przełączamy stepy w zależności
             break;
     }
 
+#ifdef MOD_MASTER_MULTIPLIER
+    bool masterBoundary = false;
+    if (row == kAllTracks - 1)
+    {
+        if (!player.performanceMode && !player.selectionMode)
+        {
+            if (player.masterActiveMult > 1)
+            {
+                // one step of the master cycle has completed (this runs once per global step, muted or not)
+                player.masterStep++;
+                if (!player.breakPattern) // Pattern Break keeps its stock early transition
+                {
+                    // the physical wrap of the pattern no longer authorizes a transition; the master boundary does
+                    player.endOfPattern = (player.masterStep >= player.masterLength);
+                }
+            }
+            if (player.endOfPattern)
+            {
+                masterRestartTracks();
+                masterBoundary = true;
+            }
+        }
+        else
+        {
+            player.masterActiveMult = 1; // Performance Mode / selection playback: multiplier has no authority
+        }
+    }
+#endif
+
     if (player.endOfPattern)
     {
         bool isNextPatternAvailable = 0; // jeśli 0 to song sie skonczyl
@@ -2001,6 +2039,14 @@ void Sequencer::switchRowStep(uint8_t row) // przełączamy stepy w zależności
             PM->refreshTrackPattern = 1;
         }
     }
+
+#ifdef MOD_MASTER_MULTIPLIER
+    if (masterBoundary)
+    {
+        // adopt the multiplier of whichever pattern is now playing (changed edits apply from here)
+        masterTimingStart(0);
+    }
+#endif
 }
 
 // The next pattern is asked for one step before it is needed and loaded by the main loop.
@@ -2253,6 +2299,36 @@ AUDIO_CORE_RAM void Sequencer::reset_actual_pos(uint8_t row, uint8_t delta /* = 
         player.track[row].actual_pos = MINSTEP + delta;
     }
 }
+
+#ifdef MOD_MASTER_MULTIPLIER
+// Latches the multiplier of the pattern that is playing now and starts a master cycle at startPos.
+AUDIO_CORE_RAM void Sequencer::masterTimingStart(uint8_t startPos)
+{
+    uint16_t steps = currentPattern->track[0].length + 1; // length is the last step index
+    player.masterActiveMult = getPatternMultiplier(currentPattern);
+    player.masterLength = steps * player.masterActiveMult;
+    player.masterStep = startPos < steps ? startPos : 0;
+}
+
+// Safe state: x1 means "stock behaviour", so nothing is left that could act on its own.
+AUDIO_CORE_RAM void Sequencer::masterTimingStop(void)
+{
+    player.masterActiveMult = 1;
+    player.masterLength = 0;
+    player.masterStep = 0;
+}
+
+// Master boundary: every ordinary track returns to step 1 regardless of where jumps left it,
+// and the per-cycle state of the optional sequencer features is cleared.
+AUDIO_CORE_RAM void Sequencer::masterRestartTracks(void)
+{
+    for (int row = 0; row < kAllTracks; row++)
+    {
+        player.track[row].actual_pos = MINSTEP;
+        player.track[row].actual_pos_absolute = MINSTEP;
+    }
+}
+#endif
 
 AUDIO_CORE_RAM void Sequencer::resetChanceState(void)
 {
@@ -2938,6 +3014,7 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
                     {
                         step->volume = velocityToVolume(velocity);
                     }
+
                 }
                 break;
             }

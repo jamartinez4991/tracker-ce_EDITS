@@ -42,7 +42,11 @@ const char firmwareVersionLabelFormatBeta[] = "%d.%d.%d " FW_EDITION_NAME " beta
 
 const uint8_t PROJECT_FILE_VERSION = 17;   // wersja struktury pliku projektu
 const uint8_t INSTRUMENT_FILE_VERSION = 9; // wersja struktury pliku instrumentu
+#if defined(MOD_MASTER_MULTIPLIER)
+const uint8_t PATTERN_FILE_VERSION = 7; // 7: strPattern::rezerwa1 = master loop multiplier (0..7 = x1..x8)
+#else
 const uint8_t PATTERN_FILE_VERSION = 6;
+#endif
 
 const uint8_t CONFIG_STRUCT_VER = 10;
 

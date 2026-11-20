@@ -375,6 +375,13 @@ class Sequencer
 
         bool breakPattern = 0; // stops pattern after current step
         bool endOfPattern = false;
+#ifdef MOD_MASTER_MULTIPLIER
+        // Master loop timing (ordinary pattern / song playback only). Independent of globalPos and
+        // of every per-track position.
+        uint16_t masterStep = 0;       // global steps completed in the active master cycle
+        uint16_t masterLength = 0;     // latched duration of the active cycle (pattern steps * multiplier)
+        uint8_t masterActiveMult = 1;  // multiplier latched for the active cycle; 1 = stock behaviour
+#endif
 
         uint8_t midiInVoiceMode = midiInVoiceMode_sequencer;
 
@@ -650,6 +657,17 @@ class Sequencer
     strPattern* getPatternToSaveToFile() { return currentPattern; }
 
     strPattern* getActualPattern() { return currentPattern; }
+#ifdef MOD_MASTER_MULTIPLIER
+    // Master loop multiplier, stored in strPattern::rezerwa1 as 0..7 (x1..x8). Every consumer goes through
+    // these helpers; any other stored value reads as x1.
+    static constexpr uint8_t kMasterMultiplierMax = 8;
+    static uint8_t decodeMasterMultiplier(uint8_t raw) { return raw < kMasterMultiplierMax ? raw + 1 : 1; }
+    static uint8_t getPatternMultiplier(const strPattern* p) { return decodeMasterMultiplier(p->rezerwa1); }
+    static void setPatternMultiplier(strPattern* p, int value)
+    {
+        p->rezerwa1 = (value < 1 ? 1 : (value > kMasterMultiplierMax ? kMasterMultiplierMax : value)) - 1;
+    }
+#endif
     strPattern* getBuffPattern() { return bufferPattern; }
 
     bool isPerformanceTrackChange(uint8_t track)
@@ -973,6 +991,11 @@ class Sequencer
     void reset_actual_pos(void);
     void reset_actual_pos(uint8_t row, uint8_t delta = 0);
     void resetChanceState(void);
+#ifdef MOD_MASTER_MULTIPLIER
+    void masterTimingStart(uint8_t startPos);
+    void masterTimingStop(void);
+    void masterRestartTracks(void);
+#endif
     bool evaluateChanceFx(uint8_t row, uint8_t value);
 
     void play_microStep(int row);

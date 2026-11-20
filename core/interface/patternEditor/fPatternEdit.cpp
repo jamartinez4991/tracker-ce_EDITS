@@ -25,6 +25,7 @@ strTrackerPattern cPatternEditor::trackerPattern;
 cPatternEditor::strFill cPatternEditor::fillData[6];
 
 cPatternEditor patternEditor;
+
 static cPatternEditor* PTE = &patternEditor;
 
 extern strMtProject mtProject;
@@ -1373,6 +1374,20 @@ void cPatternEditor::setActualPatternLength(int16_t value)
     newFileManager.setActualPatternStructChanged();
 }
 
+#ifdef MOD_MASTER_MULTIPLIER
+void cPatternEditor::setActualPatternMultiplier(int16_t value)
+{
+    Sequencer::setPatternMultiplier(sequencer.getPatternToUI(), value); // clamps to x1..x8
+    showMultiplier();
+    newFileManager.setActualPatternStructChanged();
+}
+
+void cPatternEditor::changeActualPatternMultiplier(int16_t value)
+{
+    setActualPatternMultiplier(Sequencer::getPatternMultiplier(sequencer.getPatternToUI()) + value);
+}
+#endif
+
 void cPatternEditor::changeActualPatternEditStep(int16_t value)
 {
     mtProject.values.patternEditStep =
@@ -2025,6 +2040,9 @@ void functEncoder(int16_t value)
             case 0: PTE->changeActualPattern(value); break;
             case 1: PTE->changeActualPatternLength(value); break;
             case 2: PTE->changeActualPatternEditStep(value); break;
+#ifdef MOD_MASTER_MULTIPLIER
+            case 3: PTE->changeActualPatternMultiplier(value > 0 ? 1 : -1); break;
+#endif
             case 5:
             case 6: functUndoRedoOnLeftRight(value); break;
         }
@@ -2169,6 +2187,9 @@ static void functLeft()
             }
             case 1: PTE->changeActualPatternLengthByDefinedValues(-1); return;
             case 2: PTE->changeActualPatternEditStepByDefinedValues(-1); return;
+#ifdef MOD_MASTER_MULTIPLIER
+            case 3: PTE->changeActualPatternMultiplier(-1); return;
+#endif
             case 5:
             case 6: functUndoRedoOnLeftRight(-1); return;
             default: break;
@@ -2219,6 +2240,9 @@ static void functRight()
             }
             case 1: PTE->changeActualPatternLengthByDefinedValues(1); return;
             case 2: PTE->changeActualPatternEditStepByDefinedValues(1); return;
+#ifdef MOD_MASTER_MULTIPLIER
+            case 3: PTE->changeActualPatternMultiplier(1); return;
+#endif
             case 5:
             case 6: functUndoRedoOnLeftRight(1); return;
             default: break;
@@ -2261,6 +2285,9 @@ static void functUp()
             case 0: PTE->changeActualPattern(1); return;
             case 1: PTE->changeActualPatternLength(1); return;
             case 2: PTE->changeActualPatternEditStep(1); return;
+#ifdef MOD_MASTER_MULTIPLIER
+            case 3: PTE->changeActualPatternMultiplier(1); return;
+#endif
             default: break;
         }
         return;
@@ -2294,6 +2321,9 @@ static void functDown()
             case 0: PTE->changeActualPattern(-1); return;
             case 1: PTE->changeActualPatternLength(-1); return;
             case 2: PTE->changeActualPatternEditStep(-1); return;
+#ifdef MOD_MASTER_MULTIPLIER
+            case 3: PTE->changeActualPatternMultiplier(-1); return;
+#endif
             default: break;
         }
 
@@ -3405,6 +3435,27 @@ static void functChangePatternEditStep(uint8_t state)
     }
 }
 
+#ifdef MOD_P3_MULTIPLIER
+static void functChangePatternMultiplier(uint8_t state)
+{
+    if (state == buttonPress)
+    {
+        PTE->selectedPlace = 3;
+        PTE->unfocusPattern();
+        PTE->activateLabelsBorder();
+        PTE->lightUpPadBoard();
+        display.synchronizeRefresh();
+    }
+    else if (state == buttonRelease)
+    {
+        if (PTE->selectedPlace == 3)
+        {
+            PTE->focusOnPattern();
+        }
+    }
+}
+#endif
+
 // ##############################################################################################
 // ###############################             PREVIEW          #################################
 // ##############################################################################################
@@ -4231,6 +4282,16 @@ void cPatternEditor::lightUpPadBoard()
                   1, mtConfig.values.padsLightBack, mtProject.values.patternEditStep);
                 break;
             }
+#ifdef MOD_MASTER_MULTIPLIER
+            case 3:
+            {
+                padsBacklight.setBackLayer(
+                  1,
+                  mtConfig.values.padsLightBack,
+                  Sequencer::getPatternMultiplier(sequencer.getPatternToUI()) - 1);
+                break;
+            }
+#endif
         }
 
         return;
@@ -4631,6 +4692,13 @@ static void functPads(uint8_t pad, uint8_t state, int16_t velo)
                 newFileManager.setProjectStructChanged();
                 PTE->showStep();
                 break;
+#ifdef MOD_MASTER_MULTIPLIER
+            case 3:
+                // pads 1..8 select x1..x8, every other pad is ignored
+                if (state == buttonPress && pad < Sequencer::kMasterMultiplierMax)
+                    PTE->setActualPatternMultiplier(pad + 1);
+                break;
+#endif
         }
 
         PTE->lightUpPadBoard();
@@ -5192,6 +5260,9 @@ void cPatternEditor::setActionButtonPage3Funct()
 
     ip->setButtonObj(interfaceButton0, buttonPress, functNamePattern);
     ip->setButtonObj(interfaceButton1, buttonPress, functNameTrack);
+#ifdef MOD_P3_MULTIPLIER
+    ip->setButtonObj(interfaceButton2, buttonPress, functChangePatternMultiplier);
+#endif
 
     ip->setButtonObj(interfaceButton7, buttonPress, functNextActionButtonPage);
 }

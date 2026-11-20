@@ -406,6 +406,10 @@ void cPatternEditor::showPattern(uint8_t forceShow, uint8_t shiftPressed)
 
 void cPatternEditor::showLength(uint8_t forceShow)
 {
+#if defined(MOD_MASTER_MULTIPLIER)
+    // every place that refreshes the length (pattern change, undo/redo, load) also refreshes the Page 3 multiplier
+    showMultiplier(forceShow);
+#endif
     if (fillState)
         return;
     if (actualActionButtonsPage != 0)
@@ -434,6 +438,26 @@ void cPatternEditor::showStep()
     display.setControlText2(label[2], cStep);
     display.refreshControl(label[2]);
 }
+
+#ifdef MOD_MASTER_MULTIPLIER
+void cPatternEditor::showMultiplier(uint8_t forceShow)
+{
+    if (fillState)
+        return;
+    if (actualActionButtonsPage != 2)
+        return;
+
+    uint8_t localMultiplier = Sequencer::getPatternMultiplier(sequencer.getPatternToUI());
+
+    if (lastMultiplier != localMultiplier || forceShow)
+    {
+        lastMultiplier = localMultiplier;
+        sprintf(cMultiplier, "x%d", localMultiplier);
+        display.setControlText2(label[2], cMultiplier);
+        display.refreshControl(label[2]);
+    }
+}
+#endif
 
 void cPatternEditor::refreshPatternParams()
 {
@@ -1582,7 +1606,11 @@ void cPatternEditor::showActionButtonPage3Labels()
 {
     display.setControlText(label[0], "Pattern");
     display.setControlText(label[1], "Track");
+#ifdef MOD_P3_MULTIPLIER
+    display.setControlText(label[2], "Multiplier");
+#else
     display.setControlText(label[2], "");
+#endif
     display.setControlText(label[3], "");
     display.setControlText(label[4], "");
     display.setControlText(label[5], "");
@@ -1607,10 +1635,16 @@ void cPatternEditor::showActionButtonPage3Labels()
 
     display.setControlColors(label[0], display.getTheme().activeButtonLabelsColors);
     display.setControlColors(label[1], display.getTheme().activeButtonLabelsColors);
+#ifdef MOD_P3_MULTIPLIER
+    display.setControlColors(label[2], display.getTheme().activeButtonLabelsColors);
+#endif
     display.setControlColors(label[7], display.getTheme().moreButtonColors);
 
     display.setControlData(label[0], &labelDataGreen);
     display.setControlData(label[1], &labelDataGreen);
+#ifdef MOD_P3_MULTIPLIER
+    display.setControlData(label[2], &labelDataGreen);
+#endif
     display.setControlData(label[7], &labelDataMore);
 
     for (uint8_t i = 0; i < 8; i++)
@@ -1620,7 +1654,11 @@ void cPatternEditor::showActionButtonPage3Labels()
           label[i],
           controlStyleCenterX | controlStyleCenterY | controlStyleFont3 | controlStyleShow |
             (i == 7 ? controlStyleSpecialFx2
-                    : (i < 2 ? (display.getTheme().patternEditorBottomButtonsLines
+                    : (i < 2
+#ifdef MOD_P3_MULTIPLIER
+                           || i == 2
+#endif
+                         ? (display.getTheme().patternEditorBottomButtonsLines
                                   ? controlStyleSpecialFx
                                   : 0)
                              : 0)));
@@ -1630,6 +1668,10 @@ void cPatternEditor::showActionButtonPage3Labels()
     }
 
     labelDataMore.dotIndicator.current = 2;
+
+#ifdef MOD_P3_MULTIPLIER
+    showMultiplier(1);
+#endif
 
     display.synchronizeRefresh();
 }
