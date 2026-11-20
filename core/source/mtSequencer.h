@@ -187,6 +187,9 @@ class Sequencer
 #ifdef MOD_STEP_JUMP
             FX_TYPE_STEP_JUMP, // appended after legacy ids; value 1..128 = target step
 #endif
+#ifdef MOD_COND_CHANCE
+            FX_TYPE_COND_CHANCE = 52, // fixed id (stable in saved patterns whichever mods are built)
+#endif
 
         };
 
@@ -477,6 +480,14 @@ class Sequencer
             uint8_t cancelStep = 0;
             uint32_t passCount = 0;
             bool lastCondFired = true;
+#ifdef MOD_COND_CHANCE
+            // Conditional Chance: per-step encounter phase, owned by the track. 128 bytes/track.
+            uint8_t condPhase[128] = {};
+            bool condDecided = false; // evaluated for the current step encounter
+            bool condFired = true;
+            uint32_t stepSerial = 0;                 // bumped at every step boundary of this track
+            uint32_t condEvalSerial = 0xFFFFFFFFu;   // serial of the last evaluation (idempotence guard)
+#endif
 #ifdef MOD_STEP_JUMP
             // Track Local Step Jump: recorded at uStep==1, consumed at the next step boundary
             bool pendingJumpValid = false;
@@ -982,6 +993,16 @@ class Sequencer
     void reset_actual_pos(uint8_t row, uint8_t delta = 0);
     void resetChanceState(void);
     bool evaluateChanceFx(uint8_t row, uint8_t value);
+#ifdef MOD_COND_CHANCE
+    void evaluateCondChanceControl(uint8_t row);
+
+  public:
+    // Clear all (or one track's) Cond. Chance encounter phases (playback init, pattern change, master boundary...)
+    void resetCondChanceState();
+    void resetCondChanceState(uint8_t row);
+
+  private:
+#endif
 #ifdef MOD_STEP_JUMP
     void evaluateStepJumpControl(uint8_t row);
     void applyPendingStepJump(uint8_t row, uint8_t trackLength);

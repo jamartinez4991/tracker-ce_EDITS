@@ -126,7 +126,9 @@ const uint8_t PATTERN_INDEX_MIN = 1;
 const uint8_t PATTERN_INDEX_MAX = 255;
 
 const uint8_t FX_MAX = 49;
-#if defined(MOD_STEP_JUMP) || defined(MOD_COND_CHANCE)
+#if defined(MOD_STEP_JUMP) && defined(MOD_COND_CHANCE)
+const uint8_t FX_COUNT = 48; // +Step Jump +Cond. Chance
+#elif defined(MOD_STEP_JUMP) || defined(MOD_COND_CHANCE)
 const uint8_t FX_COUNT = 47; // +1 visible FX (Track Local Step Jump or Cond. Chance); FX_MAX (49) still exceeds the highest list index
 #else
 const uint8_t FX_COUNT = 46;

@@ -3,6 +3,9 @@
 #include "mtAudioEngine.h"
 #include "mtSequencer.h"
 #include "mtStructs.h"
+#ifdef MOD_COND_CHANCE
+#include "condChance.h"
+#endif
 #include "patternEditor/patternEditor.h"
 
 #include "ctype.h"
@@ -196,6 +199,9 @@ uint8_t Sequencer::generateRandomFx()
         if (retVal != fx.FX_TYPE_TEMPO && retVal != fx.FX_TYPE_BREAK_PATTERN // breaka nie chcemy
 #ifdef MOD_STEP_JUMP
             && retVal != fx.FX_TYPE_STEP_JUMP
+#endif
+#ifdef MOD_COND_CHANCE
+            && retVal != fx.FX_TYPE_COND_CHANCE
 #endif
         )
             break;
@@ -1791,6 +1797,9 @@ AUDIO_CORE_RAM int16_t Sequencer::getFxMax(uint8_t fxID, bool forRandom)
 #ifdef MOD_STEP_JUMP
         case fx.FX_TYPE_STEP_JUMP: return 128;
 #endif
+#ifdef MOD_COND_CHANCE
+        case fx.FX_TYPE_COND_CHANCE: return forRandom ? condChance::kPctMax : condChance::kMaxValue;
+#endif
 
         case fx.FX_TYPE_MICROMOVE: return 100;
         case fx.FX_TYPE_TEMPO: return MAX_TEMPO_FX;
@@ -1862,6 +1871,9 @@ int16_t Sequencer::getFxDefault(uint8_t fxID)
         case fx.FX_TYPE_BREAK_PATTERN: return 1;
 #ifdef MOD_STEP_JUMP
         case fx.FX_TYPE_STEP_JUMP: return 1;
+#endif
+#ifdef MOD_COND_CHANCE
+        case fx.FX_TYPE_COND_CHANCE: return condChance::kDefaultValue;
 #endif
         case fx.FX_TYPE_PANNING: return 50;
         case fx.FX_TYPE_MICROTUNING: return 99;
@@ -2063,6 +2075,25 @@ void Sequencer::makeFxValLabelWithAlgin(char* ptr,
             }
             break;
         }
+#ifdef MOD_COND_CHANCE
+        case fx.FX_TYPE_COND_CHANCE:
+        {
+            const condChance::Decoded d = condChance::decode(valueFromFx);
+            if (!d.counted)
+            {
+                snprintf(ptr, len, align == fxValLabelAlign_right ? "%3i" : "%i", d.pct);
+            }
+            else
+            {
+                // same grid labels as stock Chance: "n:m" = Play n / Skip m, "Snm" = Skip n / Play m
+                if (d.playFirst)
+                    snprintf(ptr, len, "%u:%u", d.n, d.m);
+                else
+                    snprintf(ptr, len, "S%u%u", d.n, d.m);
+            }
+            break;
+        }
+#endif
         case fx.FX_TYPE_MIDI_CHORD: strncpy(ptr, chordDefName[valAfterCorrection], len); break;
         case fx.FX_TYPE_TEMPO:
         {

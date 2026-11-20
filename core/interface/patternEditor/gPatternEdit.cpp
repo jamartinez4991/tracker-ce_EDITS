@@ -4,6 +4,9 @@
 #include "mtAudioExport.h"
 #include "mtStructs.h"
 #include "patternEditor/patternEditor.h"
+#ifdef MOD_COND_CHANCE
+#include "condChance.h"
+#endif
 #include "performanceMode/performanceMode.h"
 #include "scales.h"
 
@@ -1745,7 +1748,11 @@ void cPatternEditor::showActualParamOnBar(bool forceShow)
             }
 
             uint8_t fxVal_temp =
-              (stepFx.type == sequencer.fx.FX_TYPE_CHANCE) ? stepFx.value : 0xFF;
+              (stepFx.type == sequencer.fx.FX_TYPE_CHANCE
+#ifdef MOD_COND_CHANCE
+               || stepFx.type == sequencer.fx.FX_TYPE_COND_CHANCE
+#endif
+               ) ? stepFx.value : 0xFF;
 
             if (lastTitleBarParamValue == type_temp && lastTitleBarFx == fxVal_temp &&
                 (lastTitleBarParam == editParam) && !forceShow)
@@ -1796,6 +1803,18 @@ void cPatternEditor::showActualParamOnBar(bool forceShow)
                              m);
                 }
             }
+#ifdef MOD_COND_CHANCE
+            else if (stepFx.type == sequencer.fx.FX_TYPE_COND_CHANCE)
+            {
+                const condChance::Decoded d = condChance::decode(stepFx.value);
+                if (!d.counted)
+                    snprintf(rightTitleBarLabel, sizeof(rightTitleBarLabel), "Cond: %u%%", d.pct);
+                else if (d.playFirst)
+                    snprintf(rightTitleBarLabel, sizeof(rightTitleBarLabel), "Cond: Play %u / Skip %u", d.n, d.m);
+                else
+                    snprintf(rightTitleBarLabel, sizeof(rightTitleBarLabel), "Cond: Skip %u / Play %u", d.n, d.m);
+            }
+#endif
             else
             {
                 strncpy(rightTitleBarLabel, &interfaceGlobals.fxNames[type_temp][0], 35);
