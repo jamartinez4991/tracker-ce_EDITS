@@ -1,4 +1,7 @@
 #include "mtSequencer.h"
+#ifdef MOD_MIDI_SLOT_TRIGGER
+#include "mtMidiSlotTrigger.h"
+#endif
 
 #include "configEditor/configEditor.h"
 #include "instrumentEditor/instrumentEditor.h"
@@ -106,15 +109,25 @@ void handleJackNoteOn(byte channel, byte pitch, byte velocity)
         if (isIncomingChannelDesired(channel))
         {
 
+#ifdef MOD_MIDI_SLOT_TRIGGER
+            const uint8_t rawPitch = pitch; // before Middle C calibration
+#endif
             int8_t transp = 12 * (mtConfig.midi.middleC - 2);
             pitch = clamp(pitch + transp, 0, 127);
 
             if (sequencer.getMidiInVoiceMode() == sequencer.midiInVoiceMode_sequencer)
             {
+#ifdef MOD_MIDI_SLOT_TRIGGER
+                if (!midiSlotTriggerNoteOn(rawPitch))
+                    return;
+#endif
                 sendSelection();
 
                 sequencer.handleNoteOn(
                   Sequencer::GRID_OUTSIDE_PATTERN, pitch, velocity, pitch + 100);
+#ifdef MOD_MIDI_SLOT_TRIGGER
+                midiSlotTriggerNoteInProgress = false;
+#endif
 
                 patternEditor.refreshPatternFromOutsideModule();
             }
@@ -150,15 +163,25 @@ void handleUsbNoteOn(byte channel, byte pitch, byte velocity)
     {
         if (isIncomingChannelDesired(channel))
         {
+#ifdef MOD_MIDI_SLOT_TRIGGER
+            const uint8_t rawPitch = pitch; // before Middle C calibration
+#endif
             int8_t transp = 12 * (mtConfig.midi.middleC - 2);
             pitch = clamp(pitch + transp, 0, 127);
 
             if (sequencer.getMidiInVoiceMode() == sequencer.midiInVoiceMode_sequencer)
             {
+#ifdef MOD_MIDI_SLOT_TRIGGER
+                if (!midiSlotTriggerNoteOn(rawPitch))
+                    return;
+#endif
                 sendSelection();
 
                 sequencer.handleNoteOn(
                   Sequencer::GRID_OUTSIDE_PATTERN, pitch, velocity, pitch + 100);
+#ifdef MOD_MIDI_SLOT_TRIGGER
+                midiSlotTriggerNoteInProgress = false;
+#endif
 
                 patternEditor.refreshPatternFromOutsideModule();
             }
@@ -189,11 +212,18 @@ void handleJackNoteOff(byte channel, byte pitch, [[maybe_unused]] byte velocity)
     {
         if (isIncomingChannelDesired(channel))
         {
+#ifdef MOD_MIDI_SLOT_TRIGGER
+            const uint8_t rawPitch = pitch; // before Middle C calibration
+#endif
             int8_t transp = 12 * (mtConfig.midi.middleC - 2);
             pitch = clamp(pitch + transp, 0, 127);
 
             if (sequencer.getMidiInVoiceMode() == sequencer.midiInVoiceMode_sequencer)
             {
+#ifdef MOD_MIDI_SLOT_TRIGGER
+                if (!midiSlotTriggerNoteOff(rawPitch))
+                    return;
+#endif
                 sendSelection();
                 sequencer.handleNoteOff(Sequencer::GRID_OUTSIDE_PATTERN, pitch, 0, pitch + 100);
 
@@ -235,11 +265,18 @@ void handleUsbNoteOff(byte channel, byte pitch, [[maybe_unused]] byte velocity)
     {
         if (isIncomingChannelDesired(channel))
         {
+#ifdef MOD_MIDI_SLOT_TRIGGER
+            const uint8_t rawPitch = pitch; // before Middle C calibration
+#endif
             int8_t transp = 12 * (mtConfig.midi.middleC - 2);
             pitch = clamp(pitch + transp, 0, 127);
 
             if (sequencer.getMidiInVoiceMode() == sequencer.midiInVoiceMode_sequencer)
             {
+#ifdef MOD_MIDI_SLOT_TRIGGER
+                if (!midiSlotTriggerNoteOff(rawPitch))
+                    return;
+#endif
                 sendSelection();
                 sequencer.handleNoteOff(Sequencer::GRID_OUTSIDE_PATTERN, pitch, 0, pitch + 100);
 

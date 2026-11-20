@@ -1085,6 +1085,15 @@ struct strMtConfig
         uint8_t ccInChannel;
         uint8_t middleC;
         uint8_t slaveClockComp;
+#ifdef MOD_MIDI_SLOT_TRIGGER
+        // MIDI Instrument Slot Triggering (appended; size-prefixed struct stays backward compatible)
+        uint8_t slotTrigEnabled;
+        uint8_t slotTrigMode;
+        uint8_t slotTrigKeys;
+        uint8_t slotTrigStartNote;
+        uint8_t slotTrigStartOctave;
+        uint8_t slotTrigMagic; // 0x5A once the fields above are initialised
+#endif
     } midi;
 
     struct strGlobalValues
