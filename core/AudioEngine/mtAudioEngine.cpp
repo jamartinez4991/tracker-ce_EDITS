@@ -1673,6 +1673,17 @@ AUDIO_CORE_RAM void playerEngine ::modFineTune(int8_t value)
     }
 }
 
+#ifdef MOD_PITCH_RANGE
+// High-resolution pitch modulation (cents, float). Does not touch pitchControl / fine-tune.
+AUDIO_CORE_RAM void playerEngine ::modPitchModulation(float cents)
+{
+    for (int channel = 0; channel < (int)playMemPtr.size(); channel++)
+    {
+        playMemPtr[channel]->setPitchModulationCents(cents);
+    }
+}
+#endif
+
 AUDIO_CORE_RAM void playerEngine ::modPanning(int16_t value)
 {
     float gainR = 0, gainL = 0;
@@ -2542,8 +2553,21 @@ void playerEngine::calcLfoBasedEnvelope(envelopeGenerator::strEnv* env,
 {
     env->loop = loopMode;
     env->enable = 1;
-    env->amount = lfo->amount;
-    env->sustain = lfo->amount;
+#ifdef MOD_LFO_CANONICAL
+    // Canonical LFO: the generator runs at unit amount (output in [-1,+1], random S&H drawn in
+    // 0..1 -> 2r-1 bipolar). Polarity and signed depth are applied once, in the generator's
+    // output stage, so depth is never applied twice. Amp keeps its own gain-stage LFO unchanged.
+    if (!isAmp)
+    {
+        env->amount = 1.0f;
+        env->sustain = 1.0f;
+    }
+    else
+#endif
+    {
+        env->amount = lfo->amount;
+        env->sustain = lfo->amount;
+    }
 
     uint8_t envelopeConstrain =
       isAmp ? CONSTRAIN_SPEED_AMP_ENVELOPE : CONSTRAIN_SPEED_OTHER_ENVELOPE;

@@ -535,13 +535,29 @@ float envelopeGenerator::fMap(float x, float in_min, float in_max, float out_min
     return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 
+#ifdef MOD_LFO_CANONICAL
+// canonical x in [-1,+1] -> optional unipolar (x+1)/2 (linear shift+scale, not rectification)
+// -> signed depth. Non-LFO loop modes pass through untouched.
+float envelopeGenerator::shapeLfoOutput(float canonical) const
+{
+    if (envelope->loop != 1 && envelope->loop != 3)
+        return canonical;
+    const float shaped = lfoUnipolar ? (canonical + 1.0f) * 0.5f : canonical;
+    return shaped * lfoDepth;
+}
+#endif
+
 float envelopeGenerator::getOut()
 {
     if (!envelope || !envelope->enable)
         return 0.0;
 
     calc();
+#ifdef MOD_LFO_CANONICAL
+    return shapeLfoOutput(envTemp.output);
+#else
     return (envTemp.output);
+#endif
 }
 
 float envelopeGenerator::getLastOut()
@@ -550,7 +566,11 @@ float envelopeGenerator::getLastOut()
     if (!envelope || !envelope->enable)
         return 0.0;
 
+#ifdef MOD_LFO_CANONICAL
+    return shapeLfoOutput(envTemp.output);
+#else
     return (envTemp.output);
+#endif
 }
 
 void envelopeGenerator::syncTrackerSeq(uint32_t val, float seqSpeed)

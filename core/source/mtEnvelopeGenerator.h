@@ -5,6 +5,14 @@
 #ifndef MT_ENVELOPEGENERATOR_H
 #define MT_ENVELOPEGENERATOR_H
 
+// Same derivation as in mtStructs.h (this header does not include it).
+#if !defined(MOD_LFO_CANONICAL) && (defined(MOD_LFO_SIGNED_DEPTH) || defined(MOD_LFO_POLARITY))
+#define MOD_LFO_CANONICAL
+#endif
+
+// MOD_BIPOLAR_MOD_DEPTH (see features/bipolar-mod-depth): signed ADSR / WT-envelope Amount.
+// Builds on the signed LFO depth (editor conventions, CC mapping).
+
 // #define CHANNEL_QTY 20
 #define MAX_ADSR_PAR 4095
 
@@ -60,6 +68,16 @@ class envelopeGenerator
 
     float getOut();
     float getLastOut();
+#ifdef MOD_LFO_CANONICAL
+    // Canonical LFO output shaping (applied only to loop modes 1 and 3, on the way out; the
+    // generator state, phase and random S&H timing are never touched by these setters).
+    // The generator itself runs at amount = 1, so its LFO output is canonical [-1, +1].
+    void setLfoShaping(float signedDepth, bool unipolar)
+    {
+        lfoDepth = signedDepth;
+        lfoUnipolar = unipolar;
+    }
+#endif
     // float calcOutput();
     uint8_t getPhase() { return envTemp.phase; }
     uint8_t isKeyPressed() { return keyPressed; }
@@ -125,6 +143,11 @@ class envelopeGenerator
 
     float amount;
     float sustain;
+#ifdef MOD_LFO_CANONICAL
+    float lfoDepth = 1.0f;
+    bool lfoUnipolar = false;
+    float shapeLfoOutput(float canonical) const;
+#endif
 
     // time-dependent values
     float delay;

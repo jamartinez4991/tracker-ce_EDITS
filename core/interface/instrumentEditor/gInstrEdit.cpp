@@ -1454,8 +1454,70 @@ void cInstrumentEditor::showEnvRelease()
     display.refreshControl(barControl[6]);
 }
 
+#ifdef MOD_AMOUNT_SUBPARAMS
+// Draws the Amount column's sub-parameter (Polarity / pitch depth) when one is selected.
+bool cInstrumentEditor::showAmountSub()
+{
+    const uint8_t sub = getAmountSub();
+    const uint8_t col = amountColumn();
+    const uint32_t shadow =
+      (display.getTheme().bottomScreenShadow > 0 ? controlStyleBottomShadow : 0);
+    const uint32_t gradient = (display.getTheme().barShadow > 0 ? controlStyleGradient : 0);
+    const uint32_t kBase = controlStyleShow | controlStyleBackground | shadow | gradient;
+
+    if (sub == kSubAmount)
+    {
+        // plain Amount: restore title; showEnvAmount/showLfoAmount restore bar style and value
+        display.setControlText(label[col], "Amount");
+        display.setControlStyle(barControl[col], kBase | controlStyleValue_0_100);
+        display.setControlShow(barControl[col]);
+        return false;
+    }
+
+    const uint8_t envSlot = automationDestToEnvSlot(selectedEnvelope);
+    (void)envSlot;
+
+    if (sub == kSubPolarity)
+    {
+#ifdef MOD_LFO_POLARITY
+        const bool uni = ((editorInstrument->lfoPolarityMask >> envSlot) & 1) != 0;
+        display.setControlText(label[col], "Polarity");
+        snprintf(labelText[col], sizeof(labelText[col]), "%s", uni ? "Unipolar" : "Bipolar");
+        display.setControlHide(barControl[col]);
+#endif
+    }
+    else
+    {
+#ifdef MOD_PITCH_RANGE
+        const int st = editorInstrument->pitchModSemitones;
+        const int ct = editorInstrument->pitchModCents;
+        const float combined = (st * 100 + ct) / 100.0f; // read-only result of the two controls
+        display.setControlText(label[col], sub == kSubPitchSemitones ? "Pitch st" : "Pitch ct");
+        if (combined == 0.0f)
+            snprintf(labelText[col], sizeof(labelText[col]), "0.00 st");
+        else
+            snprintf(labelText[col], sizeof(labelText[col]), "%+.2f st", (double)combined);
+        display.setControlStyle(
+          barControl[col], kBase | controlStyleValueLeftRight_100_100);
+        display.setControlShow(barControl[col]);
+        display.setControlValue(barControl[col],
+                                sub == kSubPitchSemitones ? (st * 100) / 24 : ct);
+        display.refreshControl(barControl[col]);
+#endif
+    }
+
+    display.setControlText2(label[col], labelText[col]);
+    display.refreshControl(label[col]);
+    return true;
+}
+#endif
+
 void cInstrumentEditor::showEnvAmount()
 {
+#ifdef MOD_AMOUNT_SUBPARAMS
+    if (showAmountSub())
+        return;
+#endif
     const uint8_t envSlot = automationDestToEnvSlot(selectedEnvelope);
     snprintf(labelText[7],
              sizeof(labelText[7]),
@@ -1522,12 +1584,37 @@ void cInstrumentEditor::showLfoSpeed()
 }
 void cInstrumentEditor::showLfoAmount()
 {
+#ifdef MOD_AMOUNT_SUBPARAMS
+    if (showAmountSub())
+        return;
+#endif
     const uint8_t envSlot = automationDestToEnvSlot(selectedEnvelope);
     uint8_t col = (editorInstrument->envelope[envSlot].loop == 3) ? 7 : 5;
+#ifdef MOD_LFO_SIGNED_DEPTH
+    if (envSlot != envAmp)
+    {
+        // centred signed bar (-100 .. 0 .. +100) with an explicit sign, like the wavetable warp bars
+        const uint32_t shadow =
+          (display.getTheme().bottomScreenShadow > 0 ? controlStyleBottomShadow : 0);
+        const uint32_t gradient = (display.getTheme().barShadow > 0 ? controlStyleGradient : 0);
+        display.setControlStyle(
+          barControl[col],
+          (controlStyleShow | controlStyleValueLeftRight_100_100 | controlStyleBackground) | shadow |
+            gradient);
+        const float pct = editorInstrument->lfo[envSlot].amount * 100.0f;
+        if (pct == 0.0f)
+            snprintf(labelText[col], sizeof(labelText[col]), "0");
+        else
+            snprintf(labelText[col], sizeof(labelText[col]), "%+.0f", (double)pct);
+    }
+    else
+#endif
+    {
     snprintf(labelText[col],
              sizeof(labelText[col]),
              "%.0f",
              (float)(editorInstrument->lfo[envSlot].amount * 100));
+    }
     display.setControlText2(label[col], labelText[col]);
     display.refreshControl(label[col]);
 
